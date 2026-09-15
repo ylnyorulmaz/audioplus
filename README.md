@@ -2,9 +2,9 @@
 
 Audio+ is a lightweight Chrome extension that processes the audio of the current browser tab locally on the user's device.
 
-This repository currently contains **V1 / Iteration 3**: the product-UX layer on top of the tab-capture and equalizer engine.
+This repository currently contains **V1 / Iteration 4**: release hardening for the manual equalizer product.
 
-## Iteration 3 scope
+## V1 scope
 
 - Manifest V3 Chrome extension
 - User-initiated current-tab audio capture
@@ -15,17 +15,15 @@ This repository currently contains **V1 / Iteration 3**: the product-UX layer on
 - Manual preamp (`-12 dB` to `+6 dB`)
 - Auto headroom compensation based on positive EQ/tone boosts
 - Master volume (`0%` to `150%`)
-- True bypass for quick processed/original comparison
+- Peak protection after the master-volume stage
+- True bypass for processed/original comparison
 - Built-in quick modes: Flat, Balanced, Bass+, Voice, Movie, Podcast, Bright
 - Up to 12 locally stored custom presets
-- Per-site profiles such as separate settings for YouTube, YouTube Music, or Spotify Web
-- Basic-first popup with the 10-band EQ and preamp moved under Advanced
-- Clearer unsupported-tab, starting, active, stopped, success, and error states
-- Persistent global settings, custom presets, and site profiles via `chrome.storage.local`
-- Per-tab runtime/capture state via `chrome.storage.session`
-- No server and no audio upload
+- Per-site hostname profiles
+- Basic-first popup with Advanced EQ controls
+- Local-only settings and processing; no backend or telemetry
 
-Not included yet: karaoke/vocal reduction, night mode/compression, Smart Fix, spectrum visualization, accounts, payments, analytics.
+Not included: karaoke/vocal reduction, Night Mode, Smart Fix, accounts, payments, analytics.
 
 ## Architecture
 
@@ -37,120 +35,87 @@ Popup (user gesture)
   -> offscreen document
   -> getUserMedia(tab stream)
   -> AudioContext
-  -> Bass lowshelf macro
-  -> Mid peaking macro
-  -> Treble highshelf macro
+  -> Bass / Mid / Treble filters
   -> 10 x peaking EQ filters
   -> Preamp + automatic headroom compensation
   -> Master volume
+  -> Peak protection
   -> audio output
 ```
 
-The offscreen document exists because Manifest V3 service workers do not expose the DOM/Web Audio environment needed for a persistent `AudioContext`.
+## Peak protection
 
-## Quick modes
+Iteration 4 adds a conservative `DynamicsCompressorNode` safety stage after master volume. It uses a high ratio and a threshold close to digital full scale to reduce obvious hard clipping when users combine aggressive EQ boosts with volume above 100%.
 
-Built-in presets intentionally describe listening goals rather than music genres:
+This is **not** a mastering-grade brick-wall limiter and does not make arbitrary gain safe. Auto headroom remains the first line of defense. Bypass neutralizes EQ, gain changes, and the peak-protection ratio for a cleaner A/B comparison.
 
-- **Flat** — neutral processing
-- **Balanced** — light general-purpose shaping
-- **Bass+** — stronger low end
-- **Voice** — brings speech/presence forward
-- **Movie** — modest low-end and dialogue lift
-- **Podcast** — reduces boom and emphasizes speech
-- **Bright** — adds high-frequency presence
+## Capture hardening
 
-Built-in and custom presets change tonal settings but deliberately preserve the user's current master volume. This avoids surprise volume jumps while switching presets.
+The offscreen processor now:
 
-## Custom presets
+- verifies that Chrome actually returned an audio track;
+- maps common capture failures to clearer messages;
+- cleans up the limiter and AudioContext with the rest of the graph;
+- exposes lightweight local diagnostics for debugging;
+- reports unexpected AudioContext closure back to the extension state.
 
-The current tone, 10-band EQ, preamp, and auto-headroom settings can be saved as a named custom preset. Audio+ stores up to 12 custom presets locally in Chrome. Saving a preset with the same name updates that preset.
+## Quick modes and profiles
 
-Custom presets do not store master volume or bypass state.
+Built-in presets describe listening goals rather than music genres: Flat, Balanced, Bass+, Voice, Movie, Podcast, and Bright. Preset switching keeps the user's master volume unchanged.
 
-## Per-site profiles
-
-Audio+ has one global fallback profile. On a normal `http` or `https` page, **Remember settings for this site** can be enabled.
-
-When enabled:
-
-- the current settings are saved for that hostname;
-- future changes on that hostname update only that site profile;
-- opening Audio+ on that site restores the site profile;
-- other sites continue using their own profile or the global fallback.
-
-Example:
-
-```text
-music.youtube.com -> Bass+
-youtube.com       -> Voice
-open.spotify.com  -> Balanced
-other sites       -> Global fallback
-```
-
-Chrome still requires an explicit user gesture to start tab capture. Site profiles restore settings, not silent capture.
-
-## Auto headroom
-
-Positive EQ boosts can push digital audio above available headroom and cause clipping. When **Auto headroom** is enabled, Audio+ estimates the largest positive tone/EQ boost and applies an opposite preamp compensation before master volume.
-
-This is intentionally conservative. It is not a brick-wall limiter. Peak protection/limiting remains planned for a later iteration.
+Custom presets store tone/EQ/preamp choices. Per-site profiles store full settings for a hostname such as `music.youtube.com` or `open.spotify.com`. Chrome still requires an explicit user gesture to begin tab capture.
 
 ## Run locally
 
 There is no build step.
 
-1. Clone or download this repository.
-2. Open Chrome and go to `chrome://extensions`.
-3. Turn on **Developer mode**.
-4. Click **Load unpacked**.
-5. Select this repository folder.
-6. Open a YouTube, YouTube Music, Spotify Web, or another normal audio/video tab.
-7. Start playback.
-8. Click the Audio+ extension icon.
-9. Click **Enable Audio+**.
-10. Try Quick modes, Tone controls, site profiles, and the Advanced 10-band EQ.
+```bash
+npm test
+```
 
-## Iteration 3 acceptance test
+Then:
 
-- Audio continues playing after Audio+ is enabled.
-- Flat, Bass+, Voice, Podcast, Bright, and the other built-in presets audibly differ on suitable material.
-- Switching presets does not reset master volume.
-- Manual Tone or Advanced EQ edits update the active preset indicator.
-- A custom preset can be saved, applied, overwritten by saving the same name, and deleted.
-- Custom presets survive closing Chrome.
-- Enabling a site profile stores the current settings for the current hostname.
-- Two different sites can retain different settings.
-- Disabling a site profile removes the site-specific override and leaves the current session unchanged.
-- Global settings remain the fallback for sites without profiles.
-- 10-band EQ, preamp, auto-headroom, bypass, reset, and volume continue working from Iteration 2.
-- Chrome internal/restricted pages show a clear unsupported state instead of attempting capture.
-- Closing the popup does not stop active processing.
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Click **Load unpacked** and select this repository folder.
+4. Open a normal media page and start playback.
+5. Open Audio+ and click **Enable Audio+**.
+
+## Iteration 4 acceptance test
+
+- `npm test` passes.
+- Audio continues after capture starts and after the popup closes.
+- Presets, Tone, 10-band EQ, preamp, volume, site profiles, custom presets, bypass, and reset still work.
+- Peak protection sits after master volume and reduces obvious hard clipping on aggressive settings.
+- Bypass neutralizes tone/gain processing and peak-protection ratio without ending capture.
+- Capture failure messages are understandable instead of exposing raw browser errors where possible.
 - Closing the captured tab cleans up its processor.
+- Restricted browser pages remain non-capturable.
+- No backend, remote code, analytics, or host permissions are introduced.
 
-## Known limitations
-
-- Chrome requires a user gesture before tab capture can begin. Audio+ cannot silently enable itself on arbitrary tabs.
-- Chrome replaces the tab's direct audio playback while it is being captured; Audio+ explicitly plays the captured stream back through Web Audio.
-- Site profiles are hostname-based and are restored when Audio+ resolves that tab context; they do not silently start capture.
-- Auto headroom is an estimate, not a true peak limiter. Master volume above 100% can still clip loud source material.
-- Some protected/DRM playback environments may behave differently and are not part of the current compatibility guarantee.
-- Minimum Chrome version is 116 because the MV3 service-worker-to-offscreen stream-ID flow is supported there.
-
-## Next
-
-V1 now has the essential manual equalizer product flow. Later product iterations can add higher-value differentiators:
-
-- Vocal Reduction / Karaoke
-- Dialogue / Night Mode with dynamics processing
-- Peak limiter
-- Smart Fix / automatic audio analysis
-
-These should remain separate from the basic equalizer until the current UX is validated with real users.
+See [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for the manual compatibility matrix.
 
 ## Privacy
 
-Audio+ processes audio locally in the browser. It does not upload tab audio to a server. Settings, presets, and site profiles are stored locally in Chrome.
+Audio+ processes audio locally in Chrome. It does not upload tab audio and V1 sends no analytics or telemetry. Settings, custom presets, and optional hostname-based profiles are stored in Chrome extension storage.
+
+See [PRIVACY.md](PRIVACY.md).
+
+## Known limitations
+
+- Chrome requires a user gesture before tab capture can start.
+- Peak protection is conservative Web Audio dynamics processing, not a mastering-grade true-peak limiter.
+- Very aggressive EQ/preamp/volume combinations can still sound distorted because distortion may already exist in the source or earlier in the signal chain.
+- Protected/DRM playback environments may behave differently.
+- Minimum Chrome version is 116.
+
+## Next
+
+V1 manual equalizer scope is now feature-complete enough for real-user validation. Higher-value product experiments should be separate follow-up iterations:
+
+- Vocal Reduction / Karaoke
+- Dialogue / Night Mode
+- Smart Fix / automatic audio analysis
 
 ## License
 
