@@ -54,6 +54,12 @@
       <label class="toggle-row karaoke-bass" for="keepBassToggle"><span><strong>Keep Bass</strong><small>Leaves the center below about 180 Hz intact to protect kick and bass.</small></span><input id="keepBassToggle" type="checkbox" checked /></label>
     </section>
 
+    <section class="section ai-lab-teaser" aria-labelledby="aiLabHeading">
+      <div class="section-title" id="aiLabHeading">AI Karaoke Lab · Experimental</div>
+      <p class="control-note">Prototype client-side 2-stem ONNX inference with WebGPU. This lab benchmarks local model compatibility; it does not replace Fast Karaoke playback yet.</p>
+      <a class="ai-lab-link" href="ai-lab.html" target="_blank" rel="noopener">Open AI Karaoke Lab</a>
+    </section>
+
     <section class="section" aria-labelledby="toneHeading"><div class="section-title" id="toneHeading">Tone</div>
       <div class="control-group compact"><div class="control-heading"><label for="bassSlider">Bass</label><output id="bassValue" for="bassSlider">0 dB</output></div><input id="bassSlider" type="range" min="-12" max="12" step="0.5" value="0" /></div>
       <div class="control-group compact"><div class="control-heading"><label for="midSlider">Mid</label><output id="midValue" for="midSlider">0 dB</output></div><input id="midSlider" type="range" min="-12" max="12" step="0.5" value="0" /></div>

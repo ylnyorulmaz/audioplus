@@ -1,12 +1,57 @@
 # Audio+
 
-Audio+ is a local-first Chrome audio enhancement extension. It captures only the tab the user explicitly enables and processes its audio on-device with the Web Audio API.
+Audio+ is a local-first Chrome audio enhancement extension. It captures only the tab the user explicitly enables and processes its audio on-device.
 
-Current version: **V2.4 / 0.8.0**.
+Current version: **V3 AI Karaoke prototype / 0.9.0**.
+
+## V3 prototype: client-side 2-stem ONNX + WebGPU
+
+V3 starts with an intentionally narrow **AI Karaoke Lab**. The goal is to prove that a 2-stem source-separation ONNX model can be loaded and benchmarked entirely inside the Chrome extension before Audio+ attempts real-time stem playback.
+
+The prototype currently provides:
+
+- WebGPU capability detection;
+- ONNX Runtime Web 1.29.0 bundled locally with the extension;
+- local `.onnx` file selection with no upload;
+- strict WebGPU session creation;
+- model input/output metadata inspection;
+- a bounded synthetic benchmark for one fixed-shape `float32` input;
+- model/session release controls;
+- the existing Fast Karaoke DSP as the fallback product path.
+
+The prototype **does not yet separate the currently playing song**. MDX-style models require a model-specific audio pipeline around ONNX inference: STFT, chunking, overlap-add, model inference, iSTFT, buffering, and finally playback routing. The lab exists to validate the browser/runtime/model layer before those pieces are connected.
+
+No model weights are bundled in this prototype. A user chooses a local ONNX file. Before Audio+ ships or automatically downloads a specific model, that model's weight provenance and redistribution license must be verified independently from the ONNX Runtime library license.
+
+### AI Karaoke Lab workflow
+
+1. Open Audio+ and choose **AI Karaoke Lab · Experimental**.
+2. Check whether the browser/device exposes WebGPU.
+3. Choose a local `.onnx` model.
+4. Inspect its input/output graph metadata.
+5. If it has one fixed-shape float32 input within the prototype memory limit, run the synthetic WebGPU benchmark.
+6. Use the result to decide whether that exact model/profile is viable for the next audio-pipeline prototype.
+
+### Planned next step
+
+Once one licensed 2-stem model profile is locked:
+
+```text
+Tab PCM
+  -> chunk + overlap
+  -> STFT / model-specific tensor packing
+  -> ONNX Runtime WebGPU
+  -> Vocals + Instrumental tensors
+  -> iSTFT / overlap-add
+  -> look-ahead buffer
+  -> Instrumental playback
+```
+
+The target UX is a local **AI Karaoke** mode with a short preparation/look-ahead buffer rather than pretending a source-separation model is a zero-latency Web Audio filter.
 
 ## V2 final feature set
 
-Audio+ V2 turns the original equalizer into a practical browser audio toolkit:
+The existing lightweight audio toolkit remains intact:
 
 - Bass / Mid / Treble controls
 - 10-band manual EQ and preamp
@@ -20,119 +65,53 @@ Audio+ V2 turns the original equalizer into a practical browser audio toolkit:
 - live 10-band input spectrum analyzer
 - master volume, Auto Headroom, bypass, reset, and peak protection
 
-All processing remains local. V2 has no backend, account, analytics, telemetry, LLM call, or audio upload.
+### Smart Fix
 
-## Smart Fix
+**FIX THIS AUDIO** analyzes roughly 1.3 seconds of original tab input and measures RMS/peak plus broad spectral regions. A deterministic rule engine scores practical conditions such as Muddy, Thin, Harsh, and Quiet. Automatic correction uses a dedicated 10-band layer and each Smart Fix band is limited to ±3 dB.
 
-**FIX THIS AUDIO** analyzes roughly 1.3 seconds of the original tab input and measures RMS/peak plus broad spectral regions. A deterministic rule engine scores practical conditions such as Muddy, Thin, Harsh, and Quiet.
+### Fast Karaoke / Vocal Reduction
 
-Automatic correction uses a dedicated 10-band layer separate from the manual EQ. Each Smart Fix band is limited to **±3 dB**. Re-running replaces the previous automatic curve rather than stacking corrections. Clear Smart Fix removes only the automatic layer.
-
-Quiet is detected and reported but V2 does not automatically add loudness gain.
-
-## Live spectrum analyzer
-
-V2.4 adds a 10-band live input spectrum inside **Advanced**.
-
-The analyzer reuses the existing input `AnalyserNode`; it does not create a second capture or processing graph. The popup requests snapshots only while:
-
-- Audio+ is active;
-- the popup is visible; and
-- Advanced is open.
-
-Polling stops when those conditions are not met, so the visualization does not keep running in the background after the popup closes.
-
-## Dialogue Boost and Night Mode
-
-Dialogue Boost applies a conservative low-mid reduction and speech-presence lift. Night Mode adds a separate dynamics stage with Off, Light, and Strong profiles for content with large volume jumps.
-
-## Karaoke / Vocal Reduction
-
-V2.2.1's frequency-selective stereo center attenuation remains in the V2 final release:
+The V2 fast path uses frequency-selective stereo center attenuation:
 
 - below ~180 Hz: Keep Bass can leave centered low-frequency content intact;
 - ~180 Hz to 6.5 kHz: strongest center attenuation;
 - above ~6.5 kHz: gentler attenuation to retain more cymbals, air, and ambience.
 
-Shortcuts:
+Shortcuts remain Light 45%, Karaoke 82%, and Instrumental 100%. This is stereo DSP, not source separation, so mono/off-center/doubled/reverb-heavy vocals may remain.
 
-- Light — 45%
-- Karaoke — 82%
-- Instrumental — 100%
+## Build and run locally
 
-This is still stereo DSP, not AI source separation. Mono, off-center, doubled, or stereo-reverb-heavy vocals may remain. Aggressive settings can also remove centered non-vocal material.
-
-## V2.4 lifecycle hardening
-
-V2.4 also closes several product-level edge cases:
-
-- hostname changes are detected even when the popup is closed, so site profiles can switch during navigation;
-- same-host SPA navigation keeps the existing processor and settings;
-- overlapping Smart Fix analyses on the same tab are rejected instead of racing;
-- a suspended AudioContext is asked to resume;
-- tab/track cleanup paths remain explicit;
-- stale navigation state falls back to a clear re-enable message if the processor disappeared.
-
-## Audio graph
-
-```text
-Tab capture
-  -> Analyser (original input; Smart Fix + live spectrum)
-  -> Bass / Mid / Treble
-  -> 10-band manual EQ
-  -> Dialogue shaping
-  -> Frequency-selective Vocal Reduction
-       -> low band <180 Hz
-       -> aggressive vocal band 180 Hz-6.5 kHz
-       -> gentler air band >6.5 kHz
-  -> Smart Fix 10-band correction layer (max ±3 dB/band)
-  -> Preamp + Auto Headroom
-  -> Night Mode compressor
-  -> Master volume
-  -> Peak protection
-  -> Output
-```
-
-Bypass neutralizes manual EQ, Dialogue Boost, Vocal Reduction, Smart Fix, Night Mode, gain changes, and peak protection for a cleaner original/processed comparison.
-
-## Persistence
-
-Global settings and per-site profiles can retain all normal V2 controls, including Dialogue Boost, Night Mode, Vocal Reduction, Keep Bass, and the latest Smart Fix correction curve.
-
-The explanatory Smart Fix analysis result itself is tab-session state rather than permanent history. Built-in tonal presets remain independent from Smart Fix and master volume.
-
-## Run locally
+V3 adds a build step because executable ONNX Runtime JavaScript/WASM must be packaged with the Manifest V3 extension rather than loaded from a CDN.
 
 ```bash
+npm install
+npm run build
 npm test
 ```
 
-Then open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, select this repository, play media in a normal tab, and click **Enable Audio+**.
+Then open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select this repository. Keep the generated `dist/` and `vendor/` directories present while loading the extension.
 
-## V2.4 manual acceptance test
+## V3 prototype acceptance test
 
-- Enable Audio+ on YouTube, YouTube Music, Spotify Web, and a normal HTML5-audio/video page.
-- Open Advanced: live spectrum responds to playing audio and stops polling when Advanced/popup is closed.
-- Smart Fix produces plausible conservative corrections and no automatic band exceeds ±3 dB.
-- Re-running Smart Fix replaces the previous automatic curve.
-- Clear Smart Fix leaves manual EQ and other controls unchanged.
-- Dialogue Boost and Night Mode remain audible and stable.
-- Karaoke 82% is clearly stronger than Light and Keep Bass retains more low-frequency center content.
-- Navigate within the same host and between hosts in the same tab; site settings remain coherent.
-- Pause/resume playback, reopen the popup, and keep playback running for an extended session.
-- Close the captured tab and confirm its processor is cleaned up.
-- Bypass and Reset return processing to the expected neutral states.
+- `npm run build` creates `dist/ai-karaoke-lab.js` and local `vendor/ort/` WASM/runtime assets.
+- Main Audio+ V2 processing still loads and behaves normally.
+- **Open AI Karaoke Lab** opens a stable extension page rather than trying to run a large model inside the popup lifecycle.
+- Check WebGPU reports a compatible adapter on a supported machine.
+- Selecting a local ONNX file creates a WebGPU session or reports a useful compatibility error.
+- Model bytes are read with `File.arrayBuffer()` and are not fetched or uploaded.
+- Input/output metadata is displayed.
+- Fixed-shape float32 models can run the bounded synthetic benchmark.
+- Dynamic-shape or unsupported models are reported honestly instead of receiving invented benchmark numbers.
+- Closing/releasing the model frees the inference session.
 
-These browser/audio checks are manual; the repository test suite covers deterministic settings, graph wiring, Smart Fix rules, analyzer plumbing, and lifecycle code paths but does not replace listening tests.
+CI validates buildability, packaged runtime assets, deterministic tests, and JavaScript syntax. Real WebGPU inference still requires a compatible Chrome/GPU machine and therefore remains a manual prototype test.
 
-## Privacy
+## Privacy and MV3 packaging
 
-Tab audio, Smart Fix analysis, and live-spectrum measurements stay on the device. Audio+ V2 adds no backend, analytics, account, remote model, remote code, or audio upload. See [PRIVACY.md](PRIVACY.md).
+Audio+, Smart Fix, spectrum analysis, and this V3 model lab remain local. The V3 prototype adds no server, account, analytics, telemetry, or audio upload.
 
-## Beyond V2
-
-A future V3 can experiment with **AI Karaoke / source separation**, preferably with an optional client-side 2-stem ONNX/WebGPU path where hardware allows it. That is intentionally outside the lightweight V2 release.
+Manifest V3 does not permit remotely hosted executable extension code, so ONNX Runtime JavaScript/WASM is built into the extension package. The lab accepts model weights as local data from the user's file picker. See [PRIVACY.md](PRIVACY.md).
 
 ## License
 
-MIT
+Audio+ is MIT licensed. Third-party runtime/model licenses remain their own; do not infer a model-weight license from the license of the app or runtime loading it.

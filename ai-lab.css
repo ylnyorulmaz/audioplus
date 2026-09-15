@@ -1,0 +1,25 @@
+:root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:#0d1016; color:#f4f7fb; }
+* { box-sizing:border-box; }
+body { margin:0; background:#0d1016; }
+button,input { font:inherit; }
+button,.file-picker,.back-link { cursor:pointer; }
+.lab-shell { width:min(860px, calc(100% - 32px)); margin:0 auto; padding:36px 0 56px; }
+.lab-header { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:24px; }
+.eyebrow { color:#8ca7da; font-size:11px; font-weight:800; letter-spacing:.12em; }
+h1 { margin:6px 0 8px; font-size:34px; }
+h2 { margin:0 0 8px; font-size:16px; }
+p { margin:0; color:#a7b0bf; line-height:1.55; }
+.back-link { color:#cfe0ff; text-decoration:none; border:1px solid #34425b; border-radius:9px; padding:8px 11px; background:#151b25; }
+.card { margin-top:14px; padding:18px; border:1px solid #29313e; border-radius:14px; background:#121720; }
+.hint { margin-bottom:12px; font-size:12px; }
+button,.file-picker { display:inline-flex; align-items:center; justify-content:center; min-height:38px; border:1px solid #41567b; border-radius:9px; padding:0 13px; background:#21304a; color:#e5eeff; font-weight:750; }
+button.secondary { margin-left:8px; border-color:#343c48; background:#191e27; color:#c4ccd9; }
+button:disabled { cursor:not-allowed; opacity:.45; }
+.file-picker input { display:none; }
+.status-box { margin-top:10px; padding:10px 11px; border:1px solid #2b3442; border-radius:9px; background:#0e131b; color:#aeb8c8; font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
+.status-box[data-tone="success"] { border-color:#365f45; color:#98dfad; }
+.status-box[data-tone="error"] { border-color:#6c3e43; color:#efacb2; }
+.metadata { margin:0; max-height:280px; overflow:auto; padding:12px; border:1px solid #2b3442; border-radius:9px; background:#090d12; color:#c6d1e2; font-size:11px; line-height:1.55; white-space:pre-wrap; }
+.roadmap ol { margin:10px 0 0 20px; padding:0; color:#b5becc; font-size:12px; line-height:1.7; }
+footer { margin-top:20px; color:#737f90; font-size:11px; text-align:center; }
+@media (max-width:620px) { .lab-header { display:block; } .back-link { display:inline-flex; margin-top:14px; } h1 { font-size:28px; } }

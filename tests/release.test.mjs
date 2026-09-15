@@ -79,16 +79,16 @@ test('Smart Fix can recognize thin and harsh profiles', () => {
   assert.ok(harsh.bands[8] < 0);
 });
 
-test('manifest is MV3 V2 final release 0.8.0 with minimum permissions', async () => {
+test('manifest is MV3 V3 prototype 0.9.0 with minimum audio permissions', async () => {
   const manifest=JSON.parse(await readFile(new URL('../manifest.json',import.meta.url),'utf8'));
   assert.equal(manifest.manifest_version,3);
-  assert.equal(manifest.version,'0.8.0');
+  assert.equal(manifest.version,'0.9.0');
   assert.deepEqual([...manifest.permissions].sort(),['activeTab','offscreen','storage','tabCapture'].sort());
   assert.equal(manifest.host_permissions,undefined);
   assert.equal(manifest.background.service_worker,'background.js');
 });
 
-test('package version matches manifest V2 final version', async () => {
+test('package version matches manifest version', async () => {
   const manifest=JSON.parse(await readFile(new URL('../manifest.json',import.meta.url),'utf8'));
   const pkg=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
   assert.equal(pkg.version,manifest.version);
@@ -96,77 +96,55 @@ test('package version matches manifest V2 final version', async () => {
 
 test('peak protection remains after master gain', async () => {
   const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
-  assert.match(source,/masterGain\.connect\(peakLimiter\)/);
-  assert.match(source,/peakLimiter\.connect\(context\.destination\)/);
-  assert.match(source,/ratio:\s*20/);
+  assert.match(source,/masterGain\.connect\(peakLimiter\)/); assert.match(source,/peakLimiter\.connect\(context\.destination\)/); assert.match(source,/ratio:\s*20/);
 });
 
 test('V2.1 dialogue and Night Mode graph remains intact', async () => {
   const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
-  assert.match(source,/createDialogueFilter\(context, 280/);
-  assert.match(source,/createDialogueFilter\(context, 2600/);
-  assert.match(source,/preampGain\.connect\(nightCompressor\)/);
-  assert.match(source,/nightCompressor\.connect\(masterGain\)/);
+  assert.match(source,/createDialogueFilter\(context, 280/); assert.match(source,/createDialogueFilter\(context, 2600/);
+  assert.match(source,/preampGain\.connect\(nightCompressor\)/); assert.match(source,/nightCompressor\.connect\(masterGain\)/);
 });
 
 test('V2.2.1 karaoke keeps frequency-selective center reduction', async () => {
   const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
-  assert.match(source,/VOCAL_LOW_CROSSOVER_HZ = 180/);
-  assert.match(source,/VOCAL_HIGH_CROSSOVER_HZ = 6500/);
-  assert.match(source,/const midAmount = aggressive/);
-  assert.match(source,/const highAmount = aggressive \* 0\.42/);
+  assert.match(source,/VOCAL_LOW_CROSSOVER_HZ = 180/); assert.match(source,/VOCAL_HIGH_CROSSOVER_HZ = 6500/);
+  assert.match(source,/const midAmount = aggressive/); assert.match(source,/const highAmount = aggressive \* 0\.42/);
   assert.match(source,/settings\.keepBass \? 0 : aggressive \* 0\.28/);
 });
 
 test('Smart Fix graph analyzes dry input and inserts a separate correction layer', async () => {
   const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
-  assert.match(source,/const analyser = context\.createAnalyser\(\)/);
-  assert.match(source,/source\.connect\(analyser\)/);
-  assert.match(source,/analyser\.connect\(bassMacro\)/);
-  assert.match(source,/const smartFixFilters = EQ_FREQUENCIES\.map/);
-  assert.match(source,/previous = vocalReducer\.output/);
-  assert.match(source,/for \(const filter of smartFixFilters\)/);
-  assert.match(source,/case 'ANALYZE_AUDIO'/);
+  assert.match(source,/const analyser = context\.createAnalyser\(\)/); assert.match(source,/source\.connect\(analyser\)/);
+  assert.match(source,/analyser\.connect\(bassMacro\)/); assert.match(source,/const smartFixFilters = EQ_FREQUENCIES\.map/);
+  assert.match(source,/previous = vocalReducer\.output/); assert.match(source,/for \(const filter of smartFixFilters\)/); assert.match(source,/case 'ANALYZE_AUDIO'/);
 });
 
 test('V2.4 exposes low-overhead spectrum snapshots from the existing analyser', async () => {
   const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
-  assert.match(source,/function spectrumSnapshot\(processor\)/);
-  assert.match(source,/case 'GET_SPECTRUM'/);
-  assert.match(source,/frequencies: \[\.\.\.EQ_FREQUENCIES\]/);
-  assert.equal((source.match(/context\.createAnalyser\(\)/g) ?? []).length,1);
+  assert.match(source,/function spectrumSnapshot\(processor\)/); assert.match(source,/case 'GET_SPECTRUM'/);
+  assert.match(source,/frequencies: \[\.\.\.EQ_FREQUENCIES\]/); assert.equal((source.match(/context\.createAnalyser\(\)/g) ?? []).length,1);
 });
 
 test('V2.4 resumes a suspended AudioContext and keeps cleanup paths', async () => {
   const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
-  assert.match(source,/context\.state === 'suspended'/);
-  assert.match(source,/context\.resume\(\)/);
-  assert.match(source,/processor\.analyser\.disconnect\(\)/);
-  assert.match(source,/track\.onended = null/);
+  assert.match(source,/context\.state === 'suspended'/); assert.match(source,/context\.resume\(\)/);
+  assert.match(source,/processor\.analyser\.disconnect\(\)/); assert.match(source,/track\.onended = null/);
 });
 
 test('V2.4 background prevents overlapping Smart Fix runs and syncs hostname navigation', async () => {
   const source=await readFile(new URL('../background.js',import.meta.url),'utf8');
-  assert.match(source,/const smartFixRuns = new Set\(\)/);
-  assert.match(source,/smartFixRuns\.has\(message\.tabId\)/);
-  assert.match(source,/smartFixRuns\.delete\(message\.tabId\)/);
-  assert.match(source,/chrome\.tabs\.onUpdated\.addListener/);
-  assert.match(source,/siteKeyFromUrl\(changeInfo\.url\)/);
-  assert.match(source,/syncTabSiteContext\(tabId, siteKey\)/);
+  assert.match(source,/const smartFixRuns = new Set\(\)/); assert.match(source,/smartFixRuns\.has\(message\.tabId\)/);
+  assert.match(source,/smartFixRuns\.delete\(message\.tabId\)/); assert.match(source,/chrome\.tabs\.onUpdated\.addListener/);
+  assert.match(source,/siteKeyFromUrl\(changeInfo\.url\)/); assert.match(source,/syncTabSiteContext\(tabId, siteKey\)/);
 });
 
 test('V2.4 popup exposes live spectrum controls and productization script', async () => {
   const html=await readFile(new URL('../popup.html',import.meta.url),'utf8');
-  assert.match(html,/id="spectrumBars"/);
-  assert.match(html,/id="spectrumStatus"/);
-  assert.match(html,/id="spectrumMetrics"/);
-  assert.match(html,/src="v2-productization\.js"/);
+  assert.match(html,/id="spectrumBars"/); assert.match(html,/id="spectrumStatus"/); assert.match(html,/id="spectrumMetrics"/); assert.match(html,/src="v2-productization\.js"/);
 });
 
 test('V2.4 spectrum polling only runs when popup is visible and Advanced is open', async () => {
   const source=await readFile(new URL('../v2-productization.js',import.meta.url),'utf8');
-  assert.match(source,/const POLL_MS = 240/);
-  assert.match(source,/document\.visibilityState !== 'visible'/);
-  assert.match(source,/!advancedPanel\.open/);
-  assert.match(source,/type: 'GET_SPECTRUM'/);
+  assert.match(source,/const POLL_MS = 240/); assert.match(source,/document\.visibilityState !== 'visible'/);
+  assert.match(source,/!advancedPanel\.open/); assert.match(source,/type: 'GET_SPECTRUM'/);
 });
