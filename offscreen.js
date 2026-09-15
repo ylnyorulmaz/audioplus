@@ -8,10 +8,51 @@ import {
 
 const processors = new Map();
 
+const LIMITER_ACTIVE = Object.freeze({
+  threshold: -1,
+  knee: 0,
+  ratio: 20,
+  attack: 0.003,
+  release: 0.12
+});
+
+const LIMITER_BYPASS = Object.freeze({
+  threshold: 0,
+  knee: 0,
+  ratio: 1,
+  attack: 0.003,
+  release: 0.12
+});
+
 function smoothParam(param, value, context, timeConstant = 0.015) {
   const now = context.currentTime;
   param.cancelScheduledValues(now);
   param.setTargetAtTime(value, now, timeConstant);
+}
+
+function setCompressorState(compressor, values, context) {
+  smoothParam(compressor.threshold, values.threshold, context);
+  smoothParam(compressor.knee, values.knee, context);
+  smoothParam(compressor.ratio, values.ratio, context);
+  smoothParam(compressor.attack, values.attack, context);
+  smoothParam(compressor.release, values.release, context);
+}
+
+function friendlyCaptureError(error) {
+  const name = error?.name ?? '';
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return 'Chrome blocked access to this tab audio. Reload the page and enable Audio+ again.';
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return 'This tab did not expose a usable audio stream.';
+  }
+  if (name === 'NotReadableError' || name === 'AbortError') {
+    return 'Tab audio is temporarily unavailable. Stop other capture tools and try again.';
+  }
+  if (name === 'InvalidStateError') {
+    return 'Chrome could not start the audio processor for this tab. Reload the tab and try again.';
+  }
+  return error?.message ?? String(error);
 }
 
 async function notifyStatus(tabId, enabled, error = null) {
@@ -49,10 +90,12 @@ async function stopProcessor(tabId, { notify = true } = {}) {
     for (const filter of processor.eqFilters) filter.disconnect();
     processor.preampGain.disconnect();
     processor.masterGain.disconnect();
+    processor.peakLimiter.disconnect();
   } catch {
     // Nodes may already be disconnected during teardown.
   }
 
+  processor.context.onstatechange = null;
   if (processor.context.state !== 'closed') {
     await processor.context.close();
   }
@@ -85,6 +128,12 @@ function applySettings(processor, incoming) {
     bypass ? 1 : settings.volume / 100,
     processor.context
   );
+
+  setCompressorState(
+    processor.peakLimiter,
+    bypass ? LIMITER_BYPASS : LIMITER_ACTIVE,
+    processor.context
+  );
 }
 
 function createEqFilter(context, frequency) {
@@ -94,6 +143,16 @@ function createEqFilter(context, frequency) {
   filter.Q.value = 1.4;
   filter.gain.value = 0;
   return filter;
+}
+
+function createPeakLimiter(context) {
+  const limiter = context.createDynamicsCompressor();
+  limiter.threshold.value = LIMITER_ACTIVE.threshold;
+  limiter.knee.value = LIMITER_ACTIVE.knee;
+  limiter.ratio.value = LIMITER_ACTIVE.ratio;
+  limiter.attack.value = LIMITER_ACTIVE.attack;
+  limiter.release.value = LIMITER_ACTIVE.release;
+  return limiter;
 }
 
 async function startProcessor(tabId, streamId, settings) {
@@ -112,6 +171,11 @@ async function startProcessor(tabId, streamId, settings) {
       },
       video: false
     });
+
+    const audioTracks = stream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      throw new DOMException('No audio track was returned for this tab.', 'NotFoundError');
+    }
 
     context = new AudioContext({ latencyHint: 'interactive' });
 
@@ -140,6 +204,7 @@ async function startProcessor(tabId, streamId, settings) {
     const eqFilters = EQ_FREQUENCIES.map((frequency) => createEqFilter(context, frequency));
     const preampGain = context.createGain();
     const masterGain = context.createGain();
+    const peakLimiter = createPeakLimiter(context);
 
     source.connect(bassMacro);
     bassMacro.connect(midMacro);
@@ -153,7 +218,8 @@ async function startProcessor(tabId, streamId, settings) {
 
     previous.connect(preampGain);
     preampGain.connect(masterGain);
-    masterGain.connect(context.destination);
+    masterGain.connect(peakLimiter);
+    peakLimiter.connect(context.destination);
 
     const processor = {
       tabId,
@@ -166,13 +232,22 @@ async function startProcessor(tabId, streamId, settings) {
       eqFilters,
       preampGain,
       masterGain,
+      peakLimiter,
       settings: sanitizeSettings(DEFAULT_SETTINGS)
     };
 
     processors.set(tabId, processor);
     applySettings(processor, settings ?? {});
 
-    for (const track of stream.getTracks()) {
+    context.onstatechange = () => {
+      if (!processors.has(tabId)) return;
+      if (context.state === 'closed') {
+        processors.delete(tabId);
+        notifyStatus(tabId, false, 'The browser audio processor closed unexpectedly.').catch(console.error);
+      }
+    };
+
+    for (const track of audioTracks) {
       track.onended = () => {
         if (processors.get(tabId) === processor) {
           stopProcessor(tabId).catch(console.error);
@@ -181,7 +256,14 @@ async function startProcessor(tabId, streamId, settings) {
     }
 
     await notifyStatus(tabId, true);
-    return { ok: true };
+    return {
+      ok: true,
+      diagnostics: {
+        sampleRate: context.sampleRate,
+        contextState: context.state,
+        audioTracks: audioTracks.length
+      }
+    };
   } catch (error) {
     if (stream) {
       for (const track of stream.getTracks()) track.stop();
@@ -190,7 +272,7 @@ async function startProcessor(tabId, streamId, settings) {
       await context.close();
     }
 
-    const message = error?.message ?? String(error);
+    const message = friendlyCaptureError(error);
     await notifyStatus(tabId, false, message);
     return { ok: false, error: message };
   }
@@ -218,6 +300,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!processor) throw new Error('No active processor for this tab.');
         applySettings(processor, message.settings ?? {});
         sendResponse({ ok: true });
+        return;
+      }
+
+      case 'GET_PROCESSOR_DIAGNOSTICS': {
+        const processor = processors.get(message.tabId);
+        if (!processor) {
+          sendResponse({ ok: true, active: false });
+          return;
+        }
+        sendResponse({
+          ok: true,
+          active: true,
+          contextState: processor.context.state,
+          sampleRate: processor.context.sampleRate,
+          limiterReductionDb: processor.peakLimiter.reduction,
+          audioTracks: processor.stream.getAudioTracks().length
+        });
         return;
       }
 
