@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Audio+ AI Karaoke Lab</title>
+  <link rel="stylesheet" href="ai-lab.css" />
+</head>
+<body>
+  <main class="lab-shell">
+    <header class="lab-header">
+      <div>
+        <div class="eyebrow">AUDIO+ · V3 PROTOTYPE</div>
+        <h1>AI Karaoke Lab</h1>
+        <p>Validate a local 2-stem ONNX model with ONNX Runtime Web + WebGPU before connecting it to live tab audio.</p>
+      </div>
+      <a class="back-link" href="popup.html">Audio+</a>
+    </header>
+
+    <section class="card">
+      <h2>1. Device</h2>
+      <p class="hint">This prototype intentionally requires WebGPU. Existing Fast Karaoke remains the fallback for unsupported devices.</p>
+      <button id="checkDeviceButton" type="button">Check WebGPU</button>
+      <div id="deviceStatus" class="status-box">Not checked yet.</div>
+    </section>
+
+    <section class="card">
+      <h2>2. Local model</h2>
+      <p class="hint">Choose an ONNX file from your computer. The model bytes stay inside this extension page and are not uploaded.</p>
+      <label class="file-picker">
+        <span>Choose .onnx model</span>
+        <input id="modelFile" type="file" accept=".onnx,application/octet-stream" />
+      </label>
+      <div id="runtimeStatus" class="status-box">Runtime not initialized.</div>
+      <div id="modelStatus" class="status-box">No model loaded.</div>
+      <button id="releaseModelButton" class="secondary" type="button" disabled>Release model</button>
+    </section>
+
+    <section class="card">
+      <h2>3. Graph metadata</h2>
+      <p class="hint">The lab reports model inputs/outputs first. MDX-style audio models still need their exact STFT/iSTFT and chunking profile before real audio can be separated.</p>
+      <pre id="metadataOutput" class="metadata">Load a local .onnx model to inspect its graph inputs and outputs.</pre>
+    </section>
+
+    <section class="card">
+      <h2>4. WebGPU benchmark</h2>
+      <p class="hint">For a single fixed-shape float32 input, Audio+ creates a zero tensor and measures three local inference runs. This proves runtime compatibility; it is not yet a vocal-separation quality test.</p>
+      <button id="benchmarkButton" type="button" disabled>Run synthetic benchmark</button>
+      <div id="benchmarkStatus" class="status-box">Load a compatible model before benchmarking.</div>
+    </section>
+
+    <section class="card roadmap">
+      <h2>Next prototype step</h2>
+      <ol>
+        <li>Lock one licensed 2-stem model profile.</li>
+        <li>Implement its STFT → ONNX → iSTFT pipeline.</li>
+        <li>Add overlapping audio chunks and look-ahead buffering.</li>
+        <li>Measure real-time factor on supported GPUs.</li>
+        <li>Only then route Instrumental back into Audio+ playback.</li>
+      </ol>
+    </section>
+
+    <footer>No server · no audio upload · no remote executable code.</footer>
+  </main>
+  <script type="module" src="dist/ai-karaoke-lab.js"></script>
+</body>
+</html>
