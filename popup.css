@@ -43,6 +43,16 @@ select,input[type="text"] { min-width:0; height:34px; border:1px solid #343b46; 
 select { flex:1; padding:0 8px; } input[type="text"] { flex:1; padding:0 10px; cursor:text; } select:focus,input[type="text"]:focus { border-color:#667fae; }
 .small-button { height:34px; padding:0 10px; font-size:10px; font-weight:700; white-space:nowrap; } .small-button.danger:not(:disabled) { color:#f0b2b2; }
 .advanced summary { display:flex; justify-content:space-between; list-style:none; color:#e8ecf2; font-size:13px; font-weight:700; } .advanced summary::-webkit-details-marker { display:none; } .advanced summary span { color:#747e8e; font-size:10px; font-weight:600; }
+.spectrum-panel { margin-top:14px; padding:10px; border:1px solid #29313d; border-radius:10px; background:#13171d; }
+.spectrum-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; font-size:10px; }
+.spectrum-heading strong { color:#d9e0ea; }
+.spectrum-heading span { color:#8fe0a8; font-size:9px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+.spectrum-bars { display:grid; grid-template-columns:repeat(10,1fr); align-items:end; gap:4px; min-height:82px; }
+.spectrum-column { display:grid; grid-template-rows:64px 12px; gap:4px; align-items:end; }
+.spectrum-track { position:relative; height:64px; overflow:hidden; border-radius:4px; background:#1b2028; }
+.spectrum-fill { position:absolute; right:0; bottom:0; left:0; min-height:2%; border-radius:4px 4px 2px 2px; background:linear-gradient(180deg,#dbe7ff 0%,#7793c7 100%); transition:height .16s ease-out; }
+.spectrum-label { overflow:hidden; color:#697384; font-size:7px; text-align:center; white-space:nowrap; }
+.spectrum-metrics { margin-top:6px; color:#768091; font-size:8px; font-variant-numeric:tabular-nums; text-align:right; }
 .eq-grid { display:grid; gap:7px; margin-top:14px; } .eq-row { display:grid; grid-template-columns:42px 1fr 54px; gap:10px; font-size:11px; } .eq-row label { color:#aeb6c4; font-variant-numeric:tabular-nums; } .eq-row output { text-align:right; }
 .advanced-footer { margin-top:14px; padding-top:14px; border-top:1px solid #252b34; } .advanced-footer .toggle-row { margin-top:14px; }
 .actions { gap:10px; margin-top:18px; } .secondary { flex:1; padding:9px 12px; } .secondary[aria-pressed="true"] { border-color:#d6a448; color:#ffd67e; }
