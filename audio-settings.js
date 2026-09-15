@@ -1,4 +1,5 @@
 export const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+export const NIGHT_MODES = Object.freeze(['off', 'light', 'strong']);
 
 export const DEFAULT_SETTINGS = Object.freeze({
   bassDb: 0,
@@ -8,6 +9,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   preampDb: 0,
   autoHeadroom: true,
   volume: 100,
+  dialogueBoost: 0,
+  nightMode: 'off',
   bypass: false
 });
 
@@ -15,6 +18,10 @@ export function clamp(value, min, max) {
   const number = Number(value);
   if (!Number.isFinite(number)) return min;
   return Math.min(max, Math.max(min, number));
+}
+
+export function sanitizeNightMode(value) {
+  return NIGHT_MODES.includes(value) ? value : DEFAULT_SETTINGS.nightMode;
 }
 
 export function sanitizeSettings(input = {}) {
@@ -28,6 +35,8 @@ export function sanitizeSettings(input = {}) {
     preampDb: clamp(input.preampDb ?? DEFAULT_SETTINGS.preampDb, -12, 6),
     autoHeadroom: input.autoHeadroom ?? DEFAULT_SETTINGS.autoHeadroom,
     volume: clamp(input.volume ?? DEFAULT_SETTINGS.volume, 0, 150),
+    dialogueBoost: clamp(input.dialogueBoost ?? DEFAULT_SETTINGS.dialogueBoost, 0, 100),
+    nightMode: sanitizeNightMode(input.nightMode),
     bypass: Boolean(input.bypass ?? DEFAULT_SETTINGS.bypass)
   };
 }
@@ -39,7 +48,8 @@ export function calculateHeadroomDb(settings) {
   const maxEqBoost = Math.max(0, ...safe.eqBands);
   const maxMacroBoost = Math.max(0, safe.bassDb, safe.midDb, safe.trebleDb);
   const positivePreamp = Math.max(0, safe.preampDb);
-  const estimatedBoost = maxEqBoost + maxMacroBoost + positivePreamp;
+  const dialoguePresenceBoost = safe.dialogueBoost / 100 * 3;
+  const estimatedBoost = maxEqBoost + maxMacroBoost + positivePreamp + dialoguePresenceBoost;
 
   return -Math.min(18, estimatedBoost);
 }
