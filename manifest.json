@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Audio+",
-  "version": "0.4.0",
-  "description": "Make any browser tab sound better with presets, per-site profiles, a 10-band EQ, and local audio processing.",
+  "version": "0.5.0",
+  "description": "Make browser audio easier to hear with EQ, Dialogue Boost, Night Mode, presets, and local processing.",
   "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",

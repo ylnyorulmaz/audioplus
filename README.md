@@ -1,69 +1,61 @@
 # Audio+
 
-Audio+ is a lightweight Chrome extension that processes the audio of the current browser tab locally on the user's device.
+Audio+ is a local-first Chrome audio enhancement extension. It captures only the tab the user explicitly enables and processes its audio on-device with the Web Audio API.
 
-This repository currently contains **V1 / Iteration 4**: release hardening for the manual equalizer product.
+Current version: **V2.1 / 0.5.0**.
 
-## V1 scope
+## V2.1 features
 
-- Manifest V3 Chrome extension
-- User-initiated current-tab audio capture
-- Persistent offscreen Web Audio processing after the popup closes
-- Bass / Mid / Treble macro controls (`-12 dB` to `+12 dB`)
-- 10-band graphic EQ: 32, 64, 125, 250, 500, 1k, 2k, 4k, 8k, 16k Hz
-- Per-band gain from `-12 dB` to `+12 dB`
-- Manual preamp (`-12 dB` to `+6 dB`)
-- Auto headroom compensation based on positive EQ/tone boosts
-- Master volume (`0%` to `150%`)
-- Peak protection after the master-volume stage
-- True bypass for processed/original comparison
-- Built-in quick modes: Flat, Balanced, Bass+, Voice, Movie, Podcast, Bright
-- Up to 12 locally stored custom presets
-- Per-site hostname profiles
-- Basic-first popup with Advanced EQ controls
-- Local-only settings and processing; no backend or telemetry
+Everything from V1 remains available:
 
-Not included: karaoke/vocal reduction, Night Mode, Smart Fix, accounts, payments, analytics.
+- Bass / Mid / Treble controls
+- 10-band graphic EQ
+- preamp and auto headroom
+- master volume up to 150%
+- peak protection
+- quick listening presets
+- custom presets
+- per-site profiles
+- bypass and reset
 
-## Architecture
+V2.1 adds two practical enhancement tools:
+
+### Dialogue Boost
+
+A 0-100% control that combines a gentle low-mid cut around 280 Hz with a presence lift around 2.6 kHz. At 100%, the current curve is approximately -2 dB low-mid and +3 dB presence. Auto headroom includes the dialogue presence boost in its compensation estimate.
+
+### Night Mode
+
+Three dynamics modes:
+
+- **Off** — neutral 1:1 dynamics stage
+- **Light** — moderate compression for everyday evening viewing
+- **Strong** — stronger compression for large dialogue/action level differences
+
+Night Mode runs before master volume and the existing peak-protection stage. It is intentionally separate from the limiter: Night Mode changes listening dynamics; peak protection remains a safety stage.
+
+## Audio graph
 
 ```text
-Popup (user gesture)
-  -> MV3 service worker
-  -> resolve global or per-site settings
-  -> chrome.tabCapture.getMediaStreamId()
-  -> offscreen document
-  -> getUserMedia(tab stream)
-  -> AudioContext
-  -> Bass / Mid / Treble filters
-  -> 10 x peaking EQ filters
-  -> Preamp + automatic headroom compensation
+Tab capture
+  -> Bass / Mid / Treble
+  -> 10-band EQ
+  -> Dialogue low-mid cut
+  -> Dialogue presence
+  -> Preamp + auto headroom
+  -> Night Mode compressor
   -> Master volume
   -> Peak protection
-  -> audio output
+  -> Output
 ```
 
-## Peak protection
+Bypass neutralizes EQ/tone/dialogue gain, preamp/master changes, Night Mode compression, and peak-protection ratio for a cleaner original/processed comparison.
 
-Iteration 4 adds a conservative `DynamicsCompressorNode` safety stage after master volume. It uses a high ratio and a threshold close to digital full scale to reduce obvious hard clipping when users combine aggressive EQ boosts with volume above 100%.
+## Persistence
 
-This is **not** a mastering-grade brick-wall limiter and does not make arbitrary gain safe. Auto headroom remains the first line of defense. Bypass neutralizes EQ, gain changes, and the peak-protection ratio for a cleaner A/B comparison.
+Dialogue Boost and Night Mode are normal Audio+ settings, so they participate in global settings and per-site profiles. Reset returns both to Off/0 along with the V1 controls.
 
-## Capture hardening
-
-The offscreen processor now:
-
-- verifies that Chrome actually returned an audio track;
-- maps common capture failures to clearer messages;
-- cleans up the limiter and AudioContext with the rest of the graph;
-- exposes lightweight local diagnostics for debugging;
-- reports unexpected AudioContext closure back to the extension state.
-
-## Quick modes and profiles
-
-Built-in presets describe listening goals rather than music genres: Flat, Balanced, Bass+, Voice, Movie, Podcast, and Bright. Preset switching keeps the user's master volume unchanged.
-
-Custom presets store tone/EQ/preamp choices. Per-site profiles store full settings for a hostname such as `music.youtube.com` or `open.spotify.com`. Chrome still requires an explicit user gesture to begin tab capture.
+Built-in and custom tonal presets intentionally remain focused on EQ/tone; applying Bass+, Voice, Movie, etc. does not unexpectedly switch Night Mode.
 
 ## Run locally
 
@@ -73,49 +65,29 @@ There is no build step.
 npm test
 ```
 
-Then:
+Then open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, select this repository, play media in a normal tab, and click **Enable Audio+**.
 
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Click **Load unpacked** and select this repository folder.
-4. Open a normal media page and start playback.
-5. Open Audio+ and click **Enable Audio+**.
+## V2.1 manual acceptance test
 
-## Iteration 4 acceptance test
-
-- `npm test` passes.
-- Audio continues after capture starts and after the popup closes.
-- Presets, Tone, 10-band EQ, preamp, volume, site profiles, custom presets, bypass, and reset still work.
-- Peak protection sits after master volume and reduces obvious hard clipping on aggressive settings.
-- Bypass neutralizes tone/gain processing and peak-protection ratio without ending capture.
-- Capture failure messages are understandable instead of exposing raw browser errors where possible.
-- Closing the captured tab cleans up its processor.
-- Restricted browser pages remain non-capturable.
-- No backend, remote code, analytics, or host permissions are introduced.
-
-See [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for the manual compatibility matrix.
+- Dialogue Boost is clearly audible on speech without extreme coloration.
+- 0% Dialogue Boost is neutral.
+- Night Off is neutral; Light and Strong progressively reduce large level jumps.
+- Night Mode does not replace or disable peak protection.
+- Bypass approximately restores original tone, level, and dynamics.
+- Dialogue/Night settings persist globally and in site profiles.
+- Reset returns Dialogue Boost to 0% and Night Mode to Off.
+- V1 EQ, presets, profiles, volume, capture lifecycle, and limiter still work.
+- Test long playback and same-tab navigation on YouTube, YouTube Music, and Spotify Web.
 
 ## Privacy
 
-Audio+ processes audio locally in Chrome. It does not upload tab audio and V1 sends no analytics or telemetry. Settings, custom presets, and optional hostname-based profiles are stored in Chrome extension storage.
+Audio stays on the device. V2.1 adds no backend, analytics, account, remote code, or audio upload. See [PRIVACY.md](PRIVACY.md).
 
-See [PRIVACY.md](PRIVACY.md).
-
-## Known limitations
-
-- Chrome requires a user gesture before tab capture can start.
-- Peak protection is conservative Web Audio dynamics processing, not a mastering-grade true-peak limiter.
-- Very aggressive EQ/preamp/volume combinations can still sound distorted because distortion may already exist in the source or earlier in the signal chain.
-- Protected/DRM playback environments may behave differently.
-- Minimum Chrome version is 116.
-
-## Next
-
-V1 manual equalizer scope is now feature-complete enough for real-user validation. Higher-value product experiments should be separate follow-up iterations:
+## Not in V2.1
 
 - Vocal Reduction / Karaoke
-- Dialogue / Night Mode
 - Smart Fix / automatic audio analysis
+- AI stem separation
 
 ## License
 
