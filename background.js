@@ -1,5 +1,9 @@
+import { DEFAULT_SETTINGS, sanitizeSettings } from './audio-settings.js';
+
 const OFFSCREEN_PATH = 'offscreen.html';
 const STATE_PREFIX = 'audioPlus.tab.';
+const SETTINGS_KEY = 'audioPlus.settings';
+const SETTING_KEYS = new Set(Object.keys(DEFAULT_SETTINGS));
 
 let creatingOffscreen = null;
 
@@ -29,23 +33,57 @@ function stateKey(tabId) {
   return `${STATE_PREFIX}${tabId}`;
 }
 
+function settingsFromState(state) {
+  return sanitizeSettings(state);
+}
+
+function settingsPatch(patch) {
+  return Object.fromEntries(
+    Object.entries(patch ?? {}).filter(([key]) => SETTING_KEYS.has(key))
+  );
+}
+
+async function readPersistentSettings() {
+  const result = await chrome.storage.local.get(SETTINGS_KEY);
+  return sanitizeSettings(result[SETTINGS_KEY] ?? DEFAULT_SETTINGS);
+}
+
+async function writePersistentSettings(settings) {
+  const sanitized = sanitizeSettings(settings);
+  await chrome.storage.local.set({ [SETTINGS_KEY]: sanitized });
+  return sanitized;
+}
+
 async function readTabState(tabId) {
   const key = stateKey(tabId);
   const result = await chrome.storage.session.get(key);
-  return result[key] ?? {
+  if (result[key]) return result[key];
+
+  const settings = await readPersistentSettings();
+  return {
+    ...settings,
     enabled: false,
-    bassDb: 0,
-    volume: 100,
-    bypass: false,
     error: null
   };
 }
 
-async function writeTabState(tabId, patch) {
+async function writeTabState(tabId, patch, { persist = true } = {}) {
   const key = stateKey(tabId);
   const current = await readTabState(tabId);
-  const next = { ...current, ...patch };
+  const incomingSettings = settingsPatch(patch);
+  const nextSettings = sanitizeSettings({ ...current, ...incomingSettings });
+  const next = {
+    ...current,
+    ...nextSettings,
+    ...patch
+  };
+
   await chrome.storage.session.set({ [key]: next });
+
+  if (persist && Object.keys(incomingSettings).length > 0) {
+    await writePersistentSettings(nextSettings);
+  }
+
   return next;
 }
 
@@ -78,12 +116,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'START_CAPTURE': {
         await ensureOffscreenDocument();
 
+        const current = await readTabState(message.tabId);
+        const requested = sanitizeSettings({ ...current, ...(message.settings ?? {}) });
         const state = await writeTabState(message.tabId, {
+          ...requested,
           enabled: false,
-          error: null,
-          bassDb: message.settings?.bassDb ?? 0,
-          volume: message.settings?.volume ?? 100,
-          bypass: message.settings?.bypass ?? false
+          error: null
         });
 
         const streamId = await chrome.tabCapture.getMediaStreamId({
@@ -95,60 +133,64 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           type: 'START_CAPTURE',
           tabId: message.tabId,
           streamId,
-          settings: state
+          settings: settingsFromState(state)
         });
 
         if (!result?.ok) {
           const error = result?.error ?? 'Could not start audio processing.';
-          await writeTabState(message.tabId, { enabled: false, error });
+          await writeTabState(message.tabId, { enabled: false, error }, { persist: false });
           sendResponse({ ok: false, error });
           return;
         }
 
-        const next = await writeTabState(message.tabId, { enabled: true, error: null });
+        const next = await writeTabState(
+          message.tabId,
+          { enabled: true, error: null },
+          { persist: false }
+        );
         sendResponse({ ok: true, state: next });
         return;
       }
 
       case 'STOP_CAPTURE': {
         await sendToOffscreen({ type: 'STOP_CAPTURE', tabId: message.tabId });
-        const next = await writeTabState(message.tabId, { enabled: false, error: null });
+        const next = await writeTabState(
+          message.tabId,
+          { enabled: false, error: null },
+          { persist: false }
+        );
         sendResponse({ ok: true, state: next });
         return;
       }
 
-      case 'SET_BASS': {
-        const next = await writeTabState(message.tabId, { bassDb: message.value });
-        if (next.enabled) {
-          await sendToOffscreen({ type: 'SET_BASS', tabId: message.tabId, value: message.value });
-        }
-        sendResponse({ ok: true, state: next });
-        return;
-      }
+      case 'UPDATE_SETTINGS': {
+        const current = await readTabState(message.tabId);
+        const requested = sanitizeSettings({ ...current, ...(message.patch ?? {}) });
+        const next = await writeTabState(message.tabId, requested);
 
-      case 'SET_VOLUME': {
-        const next = await writeTabState(message.tabId, { volume: message.value });
         if (next.enabled) {
-          await sendToOffscreen({ type: 'SET_VOLUME', tabId: message.tabId, value: message.value });
+          const result = await sendToOffscreen({
+            type: 'APPLY_SETTINGS',
+            tabId: message.tabId,
+            settings: settingsFromState(next)
+          });
+          if (!result?.ok) throw new Error(result?.error ?? 'Could not apply audio settings.');
         }
-        sendResponse({ ok: true, state: next });
-        return;
-      }
 
-      case 'SET_BYPASS': {
-        const next = await writeTabState(message.tabId, { bypass: message.value });
-        if (next.enabled) {
-          await sendToOffscreen({ type: 'SET_BYPASS', tabId: message.tabId, value: message.value });
-        }
         sendResponse({ ok: true, state: next });
         return;
       }
 
       case 'RESET_AUDIO': {
-        const patch = { bassDb: 0, volume: 100, bypass: false };
-        const next = await writeTabState(message.tabId, patch);
+        const resetSettings = sanitizeSettings(DEFAULT_SETTINGS);
+        const next = await writeTabState(message.tabId, resetSettings);
         if (next.enabled) {
-          await sendToOffscreen({ type: 'APPLY_SETTINGS', tabId: message.tabId, settings: next });
+          const result = await sendToOffscreen({
+            type: 'APPLY_SETTINGS',
+            tabId: message.tabId,
+            settings: resetSettings
+          });
+          if (!result?.ok) throw new Error(result?.error ?? 'Could not reset audio settings.');
         }
         sendResponse({ ok: true, state: next });
         return;
@@ -156,10 +198,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       case 'OFFSCREEN_STATUS': {
         if (message.tabId != null) {
-          await writeTabState(message.tabId, {
-            enabled: Boolean(message.enabled),
-            error: message.error ?? null
-          });
+          await writeTabState(
+            message.tabId,
+            {
+              enabled: Boolean(message.enabled),
+              error: message.error ?? null
+            },
+            { persist: false }
+          );
         }
         sendResponse({ ok: true });
         return;
@@ -191,10 +237,14 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 chrome.tabCapture.onStatusChanged.addListener(async (info) => {
   if (info.status === 'stopped' || info.status === 'error') {
     try {
-      await writeTabState(info.tabId, {
-        enabled: false,
-        error: info.status === 'error' ? 'Chrome stopped tab audio capture.' : null
-      });
+      await writeTabState(
+        info.tabId,
+        {
+          enabled: false,
+          error: info.status === 'error' ? 'Chrome stopped tab audio capture.' : null
+        },
+        { persist: false }
+      );
     } catch (error) {
       console.warn('[Audio+] capture status sync failed', error);
     }
