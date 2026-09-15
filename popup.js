@@ -1,9 +1,25 @@
+import {
+  EQ_FREQUENCIES,
+  DEFAULT_SETTINGS,
+  sanitizeSettings,
+  calculateHeadroomDb
+} from './audio-settings.js';
+
 const els = {
   siteLabel: document.querySelector('#siteLabel'),
   statusPill: document.querySelector('#statusPill'),
   powerButton: document.querySelector('#powerButton'),
   bassSlider: document.querySelector('#bassSlider'),
   bassValue: document.querySelector('#bassValue'),
+  midSlider: document.querySelector('#midSlider'),
+  midValue: document.querySelector('#midValue'),
+  trebleSlider: document.querySelector('#trebleSlider'),
+  trebleValue: document.querySelector('#trebleValue'),
+  eqGrid: document.querySelector('#eqGrid'),
+  preampSlider: document.querySelector('#preampSlider'),
+  preampValue: document.querySelector('#preampValue'),
+  autoHeadroom: document.querySelector('#autoHeadroom'),
+  headroomValue: document.querySelector('#headroomValue'),
   volumeSlider: document.querySelector('#volumeSlider'),
   volumeValue: document.querySelector('#volumeValue'),
   bypassButton: document.querySelector('#bypassButton'),
@@ -13,13 +29,15 @@ const els = {
 
 let activeTab = null;
 let state = {
+  ...sanitizeSettings(DEFAULT_SETTINGS),
   enabled: false,
-  bassDb: 0,
-  volume: 100,
-  bypass: false,
   error: null
 };
 let busy = false;
+let pendingPatch = {};
+let patchTimer = null;
+let updateChain = Promise.resolve();
+const eqControls = [];
 
 function sendMessage(message) {
   return chrome.runtime.sendMessage(message);
@@ -45,12 +63,84 @@ function formatHost(url) {
   }
 }
 
-function render() {
-  els.bassSlider.value = String(state.bassDb ?? 0);
-  els.bassValue.value = `${state.bassDb > 0 ? '+' : ''}${state.bassDb ?? 0} dB`;
+function formatDb(value) {
+  const number = Number(value) || 0;
+  const rounded = Number.isInteger(number) ? number.toFixed(0) : number.toFixed(1);
+  return `${number > 0 ? '+' : ''}${rounded} dB`;
+}
 
-  els.volumeSlider.value = String(state.volume ?? 100);
-  els.volumeValue.value = `${state.volume ?? 100}%`;
+function formatFrequency(frequency) {
+  return frequency >= 1000 ? `${frequency / 1000}k` : String(frequency);
+}
+
+function buildEqControls() {
+  EQ_FREQUENCIES.forEach((frequency, index) => {
+    const row = document.createElement('div');
+    row.className = 'eq-row';
+
+    const label = document.createElement('label');
+    label.htmlFor = `eq-${frequency}`;
+    label.textContent = formatFrequency(frequency);
+
+    const slider = document.createElement('input');
+    slider.id = `eq-${frequency}`;
+    slider.type = 'range';
+    slider.min = '-12';
+    slider.max = '12';
+    slider.step = '0.5';
+    slider.value = '0';
+
+    const output = document.createElement('output');
+    output.htmlFor = slider.id;
+    output.textContent = '0 dB';
+
+    slider.addEventListener('input', () => {
+      const bands = [...state.eqBands];
+      bands[index] = Number(slider.value);
+      state = { ...state, eqBands: bands };
+      output.textContent = formatDb(slider.value);
+      renderHeadroom();
+      queueSettingsPatch({ eqBands: bands });
+    });
+
+    row.append(label, slider, output);
+    els.eqGrid.append(row);
+    eqControls.push({ slider, output });
+  });
+}
+
+function renderHeadroom() {
+  const compensation = calculateHeadroomDb(state);
+  els.headroomValue.textContent = state.autoHeadroom
+    ? `${formatDb(compensation)} compensation`
+    : 'Disabled';
+}
+
+function render() {
+  state = {
+    ...state,
+    ...sanitizeSettings(state)
+  };
+
+  els.bassSlider.value = String(state.bassDb);
+  els.bassValue.value = formatDb(state.bassDb);
+  els.midSlider.value = String(state.midDb);
+  els.midValue.value = formatDb(state.midDb);
+  els.trebleSlider.value = String(state.trebleDb);
+  els.trebleValue.value = formatDb(state.trebleDb);
+
+  eqControls.forEach(({ slider, output }, index) => {
+    slider.value = String(state.eqBands[index]);
+    output.value = formatDb(state.eqBands[index]);
+  });
+
+  els.preampSlider.value = String(state.preampDb);
+  els.preampValue.value = formatDb(state.preampDb);
+  els.autoHeadroom.checked = Boolean(state.autoHeadroom);
+  renderHeadroom();
+
+  els.volumeSlider.value = String(state.volume);
+  els.volumeValue.value = `${Math.round(state.volume)}%`;
 
   els.bypassButton.setAttribute('aria-pressed', String(Boolean(state.bypass)));
   els.bypassButton.textContent = state.bypass ? 'Bypassed' : 'Bypass';
@@ -87,7 +177,7 @@ async function enableAudio() {
     const response = await sendMessage({
       type: 'START_CAPTURE',
       tabId: activeTab.id,
-      settings: state
+      settings: sanitizeSettings(state)
     });
 
     if (!response?.ok) throw new Error(response?.error ?? 'Could not start tab capture.');
@@ -120,18 +210,45 @@ async function disableAudio() {
   }
 }
 
-async function updateSetting(type, value) {
-  if (!activeTab || busy) return;
+function queueSettingsPatch(patch) {
+  if (!activeTab) return;
+  pendingPatch = { ...pendingPatch, ...patch };
+  clearTimeout(patchTimer);
+  patchTimer = setTimeout(flushSettingsPatch, 45);
+}
 
-  const response = await sendMessage({ type, tabId: activeTab.id, value });
-  if (!response?.ok) {
-    setMessage(response?.error ?? 'Could not update audio setting.');
-    return;
-  }
+function flushSettingsPatch() {
+  if (!activeTab || Object.keys(pendingPatch).length === 0) return;
+  const patch = pendingPatch;
+  pendingPatch = {};
 
-  state = response.state;
-  setMessage('');
-  render();
+  updateChain = updateChain.then(async () => {
+    const response = await sendMessage({
+      type: 'UPDATE_SETTINGS',
+      tabId: activeTab.id,
+      patch
+    });
+
+    if (!response?.ok) {
+      setMessage(response?.error ?? 'Could not update audio settings.');
+      await refreshState();
+      return;
+    }
+
+    setMessage('');
+  }).catch((error) => {
+    setMessage(error?.message ?? String(error));
+  });
+}
+
+function bindSlider(slider, stateKey, output) {
+  slider.addEventListener('input', () => {
+    const value = Number(slider.value);
+    state = { ...state, [stateKey]: value };
+    output.value = formatDb(value);
+    renderHeadroom();
+    queueSettingsPatch({ [stateKey]: value });
+  });
 }
 
 els.powerButton.addEventListener('click', async () => {
@@ -139,31 +256,35 @@ els.powerButton.addEventListener('click', async () => {
   else await enableAudio();
 });
 
-els.bassSlider.addEventListener('input', () => {
-  const value = Number(els.bassSlider.value);
-  state = { ...state, bassDb: value };
-  render();
-});
+bindSlider(els.bassSlider, 'bassDb', els.bassValue);
+bindSlider(els.midSlider, 'midDb', els.midValue);
+bindSlider(els.trebleSlider, 'trebleDb', els.trebleValue);
+bindSlider(els.preampSlider, 'preampDb', els.preampValue);
 
-els.bassSlider.addEventListener('change', () => {
-  updateSetting('SET_BASS', Number(els.bassSlider.value));
+els.autoHeadroom.addEventListener('change', () => {
+  state = { ...state, autoHeadroom: els.autoHeadroom.checked };
+  renderHeadroom();
+  queueSettingsPatch({ autoHeadroom: state.autoHeadroom });
 });
 
 els.volumeSlider.addEventListener('input', () => {
   const value = Number(els.volumeSlider.value);
   state = { ...state, volume: value };
-  render();
-});
-
-els.volumeSlider.addEventListener('change', () => {
-  updateSetting('SET_VOLUME', Number(els.volumeSlider.value));
+  els.volumeValue.value = `${Math.round(value)}%`;
+  queueSettingsPatch({ volume: value });
 });
 
 els.bypassButton.addEventListener('click', () => {
-  updateSetting('SET_BYPASS', !state.bypass);
+  state = { ...state, bypass: !state.bypass };
+  render();
+  queueSettingsPatch({ bypass: state.bypass });
 });
 
 els.resetButton.addEventListener('click', async () => {
+  clearTimeout(patchTimer);
+  pendingPatch = {};
+  await updateChain;
+
   const response = await sendMessage({ type: 'RESET_AUDIO', tabId: activeTab.id });
   if (!response?.ok) {
     setMessage(response?.error ?? 'Could not reset Audio+.');
@@ -173,6 +294,8 @@ els.resetButton.addEventListener('click', async () => {
   setMessage('');
   render();
 });
+
+buildEqControls();
 
 (async function init() {
   try {
