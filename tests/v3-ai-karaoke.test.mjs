@@ -43,8 +43,8 @@ test('build script packages ORT executable assets locally', async () => {
   assert.match(source,/node_modules\/onnxruntime-web\/dist/);
   assert.match(source,/vendor\/ort/);
   assert.match(source,/\^ort-wasm/);
-  assert.match(source,/ai-karaoke-lab-entry\.js/);
-  assert.match(source,/dist\/ai-karaoke-lab\.js/);
+  assert.match(source,/entryPoints: \['ai-karaoke-lab-entry\.js'\]/);
+  assert.match(source,/outfile: join\(distDir, 'ai-karaoke-lab\.js'\)/);
 });
 
 test('popup and dedicated extension page clearly label the lab experimental', async () => {
