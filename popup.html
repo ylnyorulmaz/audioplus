@@ -34,16 +34,16 @@
     <section class="section" aria-labelledby="karaokeHeading">
       <div class="section-title" id="karaokeHeading">Karaoke</div>
       <div class="karaoke-presets segmented" role="group" aria-label="Vocal Reduction modes">
-        <button type="button" data-vocal-preset="35" aria-pressed="false">Light</button>
-        <button type="button" data-vocal-preset="70" aria-pressed="false">Karaoke</button>
+        <button type="button" data-vocal-preset="45" aria-pressed="false">Light</button>
+        <button type="button" data-vocal-preset="82" aria-pressed="false">Karaoke</button>
         <button type="button" data-vocal-preset="100" aria-pressed="false">Instrumental</button>
       </div>
       <div class="control-group compact karaoke-control">
         <div class="control-heading"><label for="vocalReductionSlider">Vocal Reduction</label><output id="vocalReductionValue" for="vocalReductionSlider">0%</output></div>
         <input id="vocalReductionSlider" type="range" min="0" max="100" step="5" value="0" />
-        <p class="control-note">Reduces centered vocals in stereo mixes. Results vary by track.</p>
+        <p class="control-note">Aggressively reduces centered vocals mainly between 180 Hz and 6.5 kHz. Results vary by mix.</p>
       </div>
-      <label class="toggle-row karaoke-bass" for="keepBassToggle"><span><strong>Keep Bass</strong><small>Preserves low-frequency center content such as kick and bass.</small></span><input id="keepBassToggle" type="checkbox" checked /></label>
+      <label class="toggle-row karaoke-bass" for="keepBassToggle"><span><strong>Keep Bass</strong><small>Leaves the center below about 180 Hz intact to protect kick and bass.</small></span><input id="keepBassToggle" type="checkbox" checked /></label>
     </section>
 
     <section class="section" aria-labelledby="toneHeading"><div class="section-title" id="toneHeading">Tone</div>
