@@ -18,22 +18,65 @@
 
     <button id="powerButton" class="power" type="button">Enable Audio+</button>
 
-    <section class="control-group" aria-labelledby="bassLabel">
-      <div class="control-heading">
-        <label id="bassLabel" for="bassSlider">Bass</label>
-        <output id="bassValue" for="bassSlider">0 dB</output>
+    <section class="section" aria-labelledby="toneHeading">
+      <div class="section-title" id="toneHeading">Tone</div>
+
+      <div class="control-group compact">
+        <div class="control-heading">
+          <label for="bassSlider">Bass</label>
+          <output id="bassValue" for="bassSlider">0 dB</output>
+        </div>
+        <input id="bassSlider" type="range" min="-12" max="12" step="0.5" value="0" />
       </div>
-      <input id="bassSlider" type="range" min="-12" max="12" step="1" value="0" />
-      <div class="range-labels"><span>-12 dB</span><span>+12 dB</span></div>
+
+      <div class="control-group compact">
+        <div class="control-heading">
+          <label for="midSlider">Mid</label>
+          <output id="midValue" for="midSlider">0 dB</output>
+        </div>
+        <input id="midSlider" type="range" min="-12" max="12" step="0.5" value="0" />
+      </div>
+
+      <div class="control-group compact">
+        <div class="control-heading">
+          <label for="trebleSlider">Treble</label>
+          <output id="trebleValue" for="trebleSlider">0 dB</output>
+        </div>
+        <input id="trebleSlider" type="range" min="-12" max="12" step="0.5" value="0" />
+      </div>
     </section>
 
-    <section class="control-group" aria-labelledby="volumeLabel">
-      <div class="control-heading">
-        <label id="volumeLabel" for="volumeSlider">Volume</label>
-        <output id="volumeValue" for="volumeSlider">100%</output>
+    <details class="advanced">
+      <summary>Advanced EQ <span>10-band</span></summary>
+      <div id="eqGrid" class="eq-grid" aria-label="10-band equalizer"></div>
+    </details>
+
+    <section class="section">
+      <div class="control-group compact">
+        <div class="control-heading">
+          <label for="preampSlider">Preamp</label>
+          <output id="preampValue" for="preampSlider">0 dB</output>
+        </div>
+        <input id="preampSlider" type="range" min="-12" max="6" step="0.5" value="0" />
       </div>
-      <input id="volumeSlider" type="range" min="0" max="150" step="1" value="100" />
-      <div class="range-labels"><span>0%</span><span>150%</span></div>
+
+      <label class="toggle-row" for="autoHeadroom">
+        <span>
+          <strong>Auto headroom</strong>
+          <small id="headroomValue">0 dB compensation</small>
+        </span>
+        <input id="autoHeadroom" type="checkbox" checked />
+      </label>
+    </section>
+
+    <section class="section">
+      <div class="control-group compact">
+        <div class="control-heading">
+          <label for="volumeSlider">Volume</label>
+          <output id="volumeValue" for="volumeSlider">100%</output>
+        </div>
+        <input id="volumeSlider" type="range" min="0" max="150" step="1" value="100" />
+      </div>
     </section>
 
     <div class="actions">
@@ -42,9 +85,9 @@
     </div>
 
     <p id="message" class="message" role="status" aria-live="polite"></p>
-    <p class="privacy">Audio stays on your device. No upload, no server.</p>
+    <p class="privacy">Settings persist locally. Audio never leaves your device.</p>
   </main>
 
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>
