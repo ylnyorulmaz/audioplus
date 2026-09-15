@@ -37,6 +37,9 @@ input[type="range"] { width:100%; accent-color:#f5f7fb; }
 .smart-fix-clear { margin-top:8px; }
 .karaoke-control { margin-top:12px; }
 .karaoke-bass { margin-top:12px; }
+.ai-lab-teaser { padding-bottom:2px; }
+.ai-lab-link { display:flex; align-items:center; justify-content:center; width:100%; min-height:38px; margin-top:10px; border:1px solid #674f8f; border-radius:9px; background:#241d33; color:#e6d9ff; font-size:11px; font-weight:800; text-decoration:none; }
+.ai-lab-link:hover { border-color:#8970b5; background:#2c2340; }
 .toggle-row { gap:14px; } .toggle-row span { display:grid; gap:3px; } .toggle-row strong { font-size:12px; } .toggle-row small { color:#7e8796; font-size:10px; } .toggle-row input { width:18px; height:18px; }
 .preset-library-row,.save-preset-row { gap:7px; } .save-preset-row { margin-top:8px; }
 select,input[type="text"] { min-width:0; height:34px; border:1px solid #343b46; border-radius:8px; outline:none; background:#151920; color:#e9edf4; }
