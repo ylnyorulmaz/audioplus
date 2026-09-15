@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Audio+</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main class="panel">
+    <header class="header">
+      <div>
+        <div class="brand">AUDIO+</div>
+        <div id="siteLabel" class="site">Current tab</div>
+      </div>
+      <span id="statusPill" class="status status-off">OFF</span>
+    </header>
+
+    <button id="powerButton" class="power" type="button">Enable Audio+</button>
+
+    <section class="control-group" aria-labelledby="bassLabel">
+      <div class="control-heading">
+        <label id="bassLabel" for="bassSlider">Bass</label>
+        <output id="bassValue" for="bassSlider">0 dB</output>
+      </div>
+      <input id="bassSlider" type="range" min="-12" max="12" step="1" value="0" />
+      <div class="range-labels"><span>-12 dB</span><span>+12 dB</span></div>
+    </section>
+
+    <section class="control-group" aria-labelledby="volumeLabel">
+      <div class="control-heading">
+        <label id="volumeLabel" for="volumeSlider">Volume</label>
+        <output id="volumeValue" for="volumeSlider">100%</output>
+      </div>
+      <input id="volumeSlider" type="range" min="0" max="150" step="1" value="100" />
+      <div class="range-labels"><span>0%</span><span>150%</span></div>
+    </section>
+
+    <div class="actions">
+      <button id="bypassButton" class="secondary" type="button" aria-pressed="false">Bypass</button>
+      <button id="resetButton" class="secondary" type="button">Reset</button>
+    </div>
+
+    <p id="message" class="message" role="status" aria-live="polite"></p>
+    <p class="privacy">Audio stays on your device. No upload, no server.</p>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>
