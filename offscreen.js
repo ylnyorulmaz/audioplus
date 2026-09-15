@@ -17,6 +17,16 @@ const NIGHT_DYNAMICS = Object.freeze({
 });
 const VOCAL_LOW_CROSSOVER_HZ = 180;
 const VOCAL_HIGH_CROSSOVER_HZ = 6500;
+const ANALYSIS_SAMPLES = 12;
+const ANALYSIS_INTERVAL_MS = 110;
+const ANALYSIS_BANDS = Object.freeze({
+  bassDb: [60, 180],
+  lowMidDb: [180, 500],
+  midDb: [500, 1500],
+  presenceDb: [1500, 4000],
+  highDb: [4000, 10000],
+  airDb: [10000, 16000]
+});
 
 function smoothParam(param, value, context, timeConstant = 0.015) {
   const now = context.currentTime;
@@ -117,6 +127,7 @@ async function stopProcessor(tabId, { notify = true } = {}) {
   }
   try {
     processor.source.disconnect();
+    processor.analyser.disconnect();
     processor.bassMacro.disconnect();
     processor.midMacro.disconnect();
     processor.trebleMacro.disconnect();
@@ -124,6 +135,7 @@ async function stopProcessor(tabId, { notify = true } = {}) {
     processor.dialogueMudCut.disconnect();
     processor.dialoguePresence.disconnect();
     disconnectVocalReducer(processor.vocalReducer);
+    for (const filter of processor.smartFixFilters) filter.disconnect();
     processor.preampGain.disconnect();
     processor.nightCompressor.disconnect();
     processor.masterGain.disconnect();
@@ -150,8 +162,6 @@ function applyVocalReduction(processor, settings) {
   smoothParam(reducer.midGain.gain, active ? 1 : 0, processor.context);
   smoothParam(reducer.highGain.gain, active ? 1 : 0, processor.context);
 
-  // Keep the musical foundation nearly untouched, attack the vocal band hard,
-  // and reduce the air band more gently to preserve cymbals and stereo ambience.
   const lowAmount = settings.keepBass ? 0 : aggressive * 0.28;
   const midAmount = aggressive;
   const highAmount = aggressive * 0.42;
@@ -173,6 +183,12 @@ function applySettings(processor, incoming) {
   smoothParam(processor.dialogueMudCut.gain, -2 * dialogueAmount, processor.context);
   smoothParam(processor.dialoguePresence.gain, 3 * dialogueAmount, processor.context);
   applyVocalReduction(processor, settings);
+
+  processor.smartFixFilters.forEach((filter, index) => {
+    const gain = !bypass && settings.smartFixEnabled ? settings.smartFixBands[index] : 0;
+    smoothParam(filter.gain, gain, processor.context);
+  });
+
   smoothParam(processor.preampGain.gain, bypass ? 1 : dbToGain(effectivePreampDb(settings)), processor.context);
   setCompressorState(processor.nightCompressor, bypass ? NIGHT_DYNAMICS.off : NIGHT_DYNAMICS[settings.nightMode], processor.context);
   smoothParam(processor.masterGain.gain, bypass ? 1 : settings.volume / 100, processor.context);
@@ -276,6 +292,83 @@ function createVocalReducer(context, input) {
   };
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function bandPower(frequencyData, sampleRate, fftSize, lowHz, highHz) {
+  const binHz = sampleRate / fftSize;
+  const start = Math.max(1, Math.floor(lowHz / binHz));
+  const end = Math.min(frequencyData.length - 1, Math.ceil(highHz / binHz));
+  let power = 0;
+  let count = 0;
+  for (let index = start; index <= end; index += 1) {
+    const db = frequencyData[index];
+    if (!Number.isFinite(db)) continue;
+    power += 10 ** (db / 10);
+    count += 1;
+  }
+  return count > 0 ? power / count : 1e-10;
+}
+
+function powerToDb(power) {
+  return 10 * Math.log10(Math.max(power, 1e-10));
+}
+
+function roundMetric(value) {
+  return Math.round(value * 10) / 10;
+}
+
+async function analyzeProcessor(processor) {
+  if (processor.context.state === 'suspended') await processor.context.resume();
+
+  const frequencyData = new Float32Array(processor.analyser.frequencyBinCount);
+  const timeData = new Float32Array(processor.analyser.fftSize);
+  const bandTotals = Object.fromEntries(Object.keys(ANALYSIS_BANDS).map((key) => [key, 0]));
+  let rmsPowerTotal = 0;
+  let peak = 0;
+  let validSamples = 0;
+
+  for (let sample = 0; sample < ANALYSIS_SAMPLES; sample += 1) {
+    processor.analyser.getFloatFrequencyData(frequencyData);
+    processor.analyser.getFloatTimeDomainData(timeData);
+
+    let sumSquares = 0;
+    let samplePeak = 0;
+    for (const value of timeData) {
+      sumSquares += value * value;
+      samplePeak = Math.max(samplePeak, Math.abs(value));
+    }
+    const rmsPower = sumSquares / timeData.length;
+
+    if (rmsPower > 1e-8) {
+      validSamples += 1;
+      rmsPowerTotal += rmsPower;
+      peak = Math.max(peak, samplePeak);
+      for (const [key, [lowHz, highHz]] of Object.entries(ANALYSIS_BANDS)) {
+        bandTotals[key] += bandPower(frequencyData, processor.context.sampleRate, processor.analyser.fftSize, lowHz, highHz);
+      }
+    }
+
+    if (sample < ANALYSIS_SAMPLES - 1) await wait(ANALYSIS_INTERVAL_MS);
+  }
+
+  if (validSamples < 3) throw new Error('Not enough audible content to analyze. Play audio and try Smart Fix again.');
+
+  const rmsDb = powerToDb(rmsPowerTotal / validSamples);
+  if (rmsDb < -65) throw new Error('Audio is too quiet to analyze. Play a louder section and try again.');
+
+  const metrics = {};
+  for (const key of Object.keys(ANALYSIS_BANDS)) {
+    metrics[key] = roundMetric(powerToDb(bandTotals[key] / validSamples));
+  }
+  metrics.rmsDb = roundMetric(rmsDb);
+  metrics.peakDb = roundMetric(20 * Math.log10(Math.max(peak, 1e-6)));
+  metrics.crestDb = roundMetric(metrics.peakDb - metrics.rmsDb);
+
+  return metrics;
+}
+
 async function startProcessor(tabId, streamId, settings) {
   await stopProcessor(tabId, { notify: false });
   let context;
@@ -291,6 +384,12 @@ async function startProcessor(tabId, streamId, settings) {
     if (context.state === 'suspended') await context.resume();
 
     const source = context.createMediaStreamSource(stream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.minDecibels = -100;
+    analyser.maxDecibels = -20;
+    analyser.smoothingTimeConstant = 0.5;
+
     const bassMacro = context.createBiquadFilter();
     bassMacro.type = 'lowshelf'; bassMacro.frequency.value = 180;
     const midMacro = context.createBiquadFilter();
@@ -300,24 +399,48 @@ async function startProcessor(tabId, streamId, settings) {
     const eqFilters = EQ_FREQUENCIES.map((frequency) => createEqFilter(context, frequency));
     const dialogueMudCut = createDialogueFilter(context, 280, 0.9);
     const dialoguePresence = createDialogueFilter(context, 2600, 0.85);
+    const smartFixFilters = EQ_FREQUENCIES.map((frequency) => createEqFilter(context, frequency));
     const preampGain = context.createGain();
     const nightCompressor = createCompressor(context, NIGHT_DYNAMICS.off);
     const masterGain = context.createGain();
     const peakLimiter = createCompressor(context, LIMITER_ACTIVE);
 
-    source.connect(bassMacro); bassMacro.connect(midMacro); midMacro.connect(trebleMacro);
+    source.connect(analyser);
+    analyser.connect(bassMacro);
+    bassMacro.connect(midMacro); midMacro.connect(trebleMacro);
     let previous = trebleMacro;
     for (const filter of eqFilters) { previous.connect(filter); previous = filter; }
     previous.connect(dialogueMudCut);
     dialogueMudCut.connect(dialoguePresence);
     const vocalReducer = createVocalReducer(context, dialoguePresence);
-    vocalReducer.output.connect(preampGain);
+    previous = vocalReducer.output;
+    for (const filter of smartFixFilters) { previous.connect(filter); previous = filter; }
+    previous.connect(preampGain);
     preampGain.connect(nightCompressor);
     nightCompressor.connect(masterGain);
     masterGain.connect(peakLimiter);
     peakLimiter.connect(context.destination);
 
-    const processor = { tabId, context, stream, source, bassMacro, midMacro, trebleMacro, eqFilters, dialogueMudCut, dialoguePresence, vocalReducer, preampGain, nightCompressor, masterGain, peakLimiter, settings: sanitizeSettings(DEFAULT_SETTINGS) };
+    const processor = {
+      tabId,
+      context,
+      stream,
+      source,
+      analyser,
+      bassMacro,
+      midMacro,
+      trebleMacro,
+      eqFilters,
+      dialogueMudCut,
+      dialoguePresence,
+      vocalReducer,
+      smartFixFilters,
+      preampGain,
+      nightCompressor,
+      masterGain,
+      peakLimiter,
+      settings: sanitizeSettings(DEFAULT_SETTINGS)
+    };
     processors.set(tabId, processor);
     applySettings(processor, settings ?? {});
 
@@ -351,6 +474,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!processor) throw new Error('No active processor for this tab.');
         applySettings(processor, message.settings ?? {}); sendResponse({ ok: true }); return;
       }
+      case 'ANALYZE_AUDIO': {
+        const processor = processors.get(message.tabId);
+        if (!processor) throw new Error('Enable Audio+ before running Smart Fix.');
+        const metrics = await analyzeProcessor(processor);
+        sendResponse({ ok: true, metrics });
+        return;
+      }
       case 'GET_PROCESSOR_DIAGNOSTICS': {
         const processor = processors.get(message.tabId);
         if (!processor) { sendResponse({ ok: true, active: false }); return; }
@@ -364,6 +494,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           vocalReduction: processor.settings.vocalReduction,
           keepBass: processor.settings.keepBass,
           vocalBandHz: [VOCAL_LOW_CROSSOVER_HZ, VOCAL_HIGH_CROSSOVER_HZ],
+          smartFixEnabled: processor.settings.smartFixEnabled,
+          smartFixBands: processor.settings.smartFixBands,
           audioTracks: processor.stream.getAudioTracks().length
         });
         return;
