@@ -1,8 +1,12 @@
 import { DEFAULT_SETTINGS, sanitizeSettings } from './audio-settings.js';
+import { presetSnapshot, sanitizePresetName } from './presets.js';
 
 const OFFSCREEN_PATH = 'offscreen.html';
 const STATE_PREFIX = 'audioPlus.tab.';
 const SETTINGS_KEY = 'audioPlus.settings';
+const SITE_PROFILES_KEY = 'audioPlus.siteProfiles';
+const CUSTOM_PRESETS_KEY = 'audioPlus.customPresets';
+const MAX_CUSTOM_PRESETS = 12;
 const SETTING_KEYS = new Set(Object.keys(DEFAULT_SETTINGS));
 
 let creatingOffscreen = null;
@@ -33,6 +37,13 @@ function stateKey(tabId) {
   return `${STATE_PREFIX}${tabId}`;
 }
 
+function normalizeSiteKey(value) {
+  const siteKey = String(value ?? '').trim().toLowerCase();
+  if (!siteKey || siteKey.length > 253) return null;
+  if (!/^[a-z0-9.-]+$/.test(siteKey)) return null;
+  return siteKey;
+}
+
 function settingsFromState(state) {
   return sanitizeSettings(state);
 }
@@ -43,45 +54,161 @@ function settingsPatch(patch) {
   );
 }
 
-async function readPersistentSettings() {
+async function readGlobalSettings() {
   const result = await chrome.storage.local.get(SETTINGS_KEY);
   return sanitizeSettings(result[SETTINGS_KEY] ?? DEFAULT_SETTINGS);
 }
 
-async function writePersistentSettings(settings) {
-  const sanitized = sanitizeSettings(settings);
-  await chrome.storage.local.set({ [SETTINGS_KEY]: sanitized });
-  return sanitized;
+async function writeGlobalSettings(settings) {
+  const safe = sanitizeSettings(settings);
+  await chrome.storage.local.set({ [SETTINGS_KEY]: safe });
+  return safe;
 }
 
-async function readTabState(tabId) {
-  const key = stateKey(tabId);
-  const result = await chrome.storage.session.get(key);
-  if (result[key]) return result[key];
+async function readSiteProfiles() {
+  const result = await chrome.storage.local.get(SITE_PROFILES_KEY);
+  const profiles = result[SITE_PROFILES_KEY];
+  return profiles && typeof profiles === 'object' && !Array.isArray(profiles) ? profiles : {};
+}
 
-  const settings = await readPersistentSettings();
+async function writeSiteProfiles(profiles) {
+  await chrome.storage.local.set({ [SITE_PROFILES_KEY]: profiles });
+}
+
+async function readCustomPresets() {
+  const result = await chrome.storage.local.get(CUSTOM_PRESETS_KEY);
+  const presets = result[CUSTOM_PRESETS_KEY];
+  if (!Array.isArray(presets)) return [];
+
+  return presets
+    .filter((preset) => preset && typeof preset === 'object')
+    .map((preset) => ({
+      id: String(preset.id ?? ''),
+      name: sanitizePresetName(preset.name),
+      settings: presetSnapshot(preset.settings),
+      createdAt: Number(preset.createdAt) || Date.now(),
+      updatedAt: Number(preset.updatedAt) || Date.now()
+    }))
+    .filter((preset) => preset.id && preset.name)
+    .slice(0, MAX_CUSTOM_PRESETS);
+}
+
+async function writeCustomPresets(presets) {
+  await chrome.storage.local.set({ [CUSTOM_PRESETS_KEY]: presets.slice(0, MAX_CUSTOM_PRESETS) });
+}
+
+async function getSiteProfile(siteKey) {
+  const normalized = normalizeSiteKey(siteKey);
+  if (!normalized) return null;
+  const profiles = await readSiteProfiles();
+  const profile = profiles[normalized];
+  if (!profile?.settings) return null;
   return {
-    ...settings,
-    enabled: false,
-    error: null
+    siteKey: normalized,
+    settings: sanitizeSettings(profile.settings),
+    updatedAt: Number(profile.updatedAt) || 0
   };
 }
 
-async function writeTabState(tabId, patch, { persist = true } = {}) {
+async function isSiteProfileActive(siteKey) {
+  return Boolean(await getSiteProfile(siteKey));
+}
+
+async function readPersistentSettings(siteKey) {
+  const profile = await getSiteProfile(siteKey);
+  if (profile) return profile.settings;
+  return readGlobalSettings();
+}
+
+async function persistSettings(settings, siteKey) {
+  const safe = sanitizeSettings(settings);
+  const normalized = normalizeSiteKey(siteKey);
+
+  if (normalized) {
+    const profiles = await readSiteProfiles();
+    if (profiles[normalized]) {
+      profiles[normalized] = {
+        settings: safe,
+        updatedAt: Date.now()
+      };
+      await writeSiteProfiles(profiles);
+      return safe;
+    }
+  }
+
+  return writeGlobalSettings(safe);
+}
+
+async function getSessionState(tabId) {
   const key = stateKey(tabId);
-  const current = await readTabState(tabId);
+  const result = await chrome.storage.session.get(key);
+  return result[key] ?? null;
+}
+
+async function setSessionState(tabId, state) {
+  await chrome.storage.session.set({ [stateKey(tabId)]: state });
+  return state;
+}
+
+async function readTabState(tabId, siteKey = null) {
+  const current = await getSessionState(tabId);
+  if (current) return current;
+
+  const normalized = normalizeSiteKey(siteKey);
+  const settings = await readPersistentSettings(normalized);
+  return setSessionState(tabId, {
+    ...settings,
+    enabled: false,
+    error: null,
+    siteKey: normalized
+  });
+}
+
+async function writeTabState(tabId, patch, { persist = true, siteKey = null } = {}) {
+  const current = await readTabState(tabId, siteKey);
   const incomingSettings = settingsPatch(patch);
   const nextSettings = sanitizeSettings({ ...current, ...incomingSettings });
+  const normalized = normalizeSiteKey(siteKey) ?? current.siteKey ?? null;
   const next = {
     ...current,
     ...nextSettings,
-    ...patch
+    ...patch,
+    siteKey: normalized
   };
 
-  await chrome.storage.session.set({ [key]: next });
+  await setSessionState(tabId, next);
 
   if (persist && Object.keys(incomingSettings).length > 0) {
-    await writePersistentSettings(nextSettings);
+    await persistSettings(nextSettings, normalized);
+  }
+
+  return next;
+}
+
+async function syncTabSiteContext(tabId, siteKey) {
+  const normalized = normalizeSiteKey(siteKey);
+  const current = await getSessionState(tabId);
+
+  if (!current) return readTabState(tabId, normalized);
+  if (!normalized || current.siteKey === normalized) return current;
+
+  const settings = await readPersistentSettings(normalized);
+  const next = {
+    ...settings,
+    enabled: Boolean(current.enabled),
+    error: current.error ?? null,
+    siteKey: normalized
+  };
+
+  await setSessionState(tabId, next);
+
+  if (next.enabled) {
+    const result = await sendToOffscreen({
+      type: 'APPLY_SETTINGS',
+      tabId,
+      settings: settingsFromState(next)
+    });
+    if (!result?.ok) throw new Error(result?.error ?? 'Could not switch site audio profile.');
   }
 
   return next;
@@ -96,6 +223,27 @@ async function sendToOffscreen(message) {
   return chrome.runtime.sendMessage({ ...message, target: 'offscreen' });
 }
 
+async function enableSiteProfile(siteKey, settings) {
+  const normalized = normalizeSiteKey(siteKey);
+  if (!normalized) throw new Error('This page cannot use a site profile.');
+
+  const profiles = await readSiteProfiles();
+  profiles[normalized] = {
+    settings: sanitizeSettings(settings),
+    updatedAt: Date.now()
+  };
+  await writeSiteProfiles(profiles);
+}
+
+async function disableSiteProfile(siteKey) {
+  const normalized = normalizeSiteKey(siteKey);
+  if (!normalized) return;
+  const profiles = await readSiteProfiles();
+  if (!profiles[normalized]) return;
+  delete profiles[normalized];
+  await writeSiteProfiles(profiles);
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.target === 'offscreen') return;
 
@@ -108,21 +256,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       case 'GET_TAB_STATE': {
-        const state = await readTabState(message.tabId);
-        sendResponse({ ok: true, state });
+        const state = await syncTabSiteContext(message.tabId, message.siteKey);
+        const [siteProfileActive, customPresets] = await Promise.all([
+          isSiteProfileActive(message.siteKey),
+          readCustomPresets()
+        ]);
+        sendResponse({ ok: true, state, siteProfileActive, customPresets });
         return;
       }
 
       case 'START_CAPTURE': {
         await ensureOffscreenDocument();
 
-        const current = await readTabState(message.tabId);
+        const current = await syncTabSiteContext(message.tabId, message.siteKey);
         const requested = sanitizeSettings({ ...current, ...(message.settings ?? {}) });
-        const state = await writeTabState(message.tabId, {
-          ...requested,
-          enabled: false,
-          error: null
-        });
+        const state = await writeTabState(
+          message.tabId,
+          { ...requested, enabled: false, error: null },
+          { persist: true, siteKey: message.siteKey }
+        );
 
         const streamId = await chrome.tabCapture.getMediaStreamId({
           targetTabId: message.tabId
@@ -138,7 +290,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         if (!result?.ok) {
           const error = result?.error ?? 'Could not start audio processing.';
-          await writeTabState(message.tabId, { enabled: false, error }, { persist: false });
+          await writeTabState(
+            message.tabId,
+            { enabled: false, error },
+            { persist: false, siteKey: message.siteKey }
+          );
           sendResponse({ ok: false, error });
           return;
         }
@@ -146,7 +302,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const next = await writeTabState(
           message.tabId,
           { enabled: true, error: null },
-          { persist: false }
+          { persist: false, siteKey: message.siteKey }
         );
         sendResponse({ ok: true, state: next });
         return;
@@ -157,16 +313,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const next = await writeTabState(
           message.tabId,
           { enabled: false, error: null },
-          { persist: false }
+          { persist: false, siteKey: message.siteKey }
         );
         sendResponse({ ok: true, state: next });
         return;
       }
 
       case 'UPDATE_SETTINGS': {
-        const current = await readTabState(message.tabId);
+        const current = await syncTabSiteContext(message.tabId, message.siteKey);
         const requested = sanitizeSettings({ ...current, ...(message.patch ?? {}) });
-        const next = await writeTabState(message.tabId, requested);
+        const next = await writeTabState(
+          message.tabId,
+          requested,
+          { persist: true, siteKey: message.siteKey }
+        );
 
         if (next.enabled) {
           const result = await sendToOffscreen({
@@ -183,7 +343,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       case 'RESET_AUDIO': {
         const resetSettings = sanitizeSettings(DEFAULT_SETTINGS);
-        const next = await writeTabState(message.tabId, resetSettings);
+        const next = await writeTabState(
+          message.tabId,
+          resetSettings,
+          { persist: true, siteKey: message.siteKey }
+        );
         if (next.enabled) {
           const result = await sendToOffscreen({
             type: 'APPLY_SETTINGS',
@@ -196,15 +360,72 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
+      case 'SET_SITE_PROFILE': {
+        const state = await syncTabSiteContext(message.tabId, message.siteKey);
+        if (message.enabled) {
+          await enableSiteProfile(message.siteKey, settingsFromState(state));
+        } else {
+          await disableSiteProfile(message.siteKey);
+        }
+        sendResponse({
+          ok: true,
+          state,
+          siteProfileActive: Boolean(message.enabled)
+        });
+        return;
+      }
+
+      case 'SAVE_CUSTOM_PRESET': {
+        const name = sanitizePresetName(message.name);
+        if (!name) throw new Error('Enter a preset name first.');
+
+        const presets = await readCustomPresets();
+        const existingIndex = presets.findIndex(
+          (preset) => preset.name.toLowerCase() === name.toLowerCase()
+        );
+        const now = Date.now();
+        const preset = {
+          id: existingIndex >= 0
+            ? presets[existingIndex].id
+            : `custom-${now}-${Math.random().toString(36).slice(2, 8)}`,
+          name,
+          settings: presetSnapshot(message.settings),
+          createdAt: existingIndex >= 0 ? presets[existingIndex].createdAt : now,
+          updatedAt: now
+        };
+
+        if (existingIndex >= 0) {
+          presets.splice(existingIndex, 1, preset);
+        } else {
+          if (presets.length >= MAX_CUSTOM_PRESETS) {
+            throw new Error(`You can save up to ${MAX_CUSTOM_PRESETS} custom presets.`);
+          }
+          presets.push(preset);
+        }
+
+        await writeCustomPresets(presets);
+        sendResponse({ ok: true, customPresets: presets, preset });
+        return;
+      }
+
+      case 'DELETE_CUSTOM_PRESET': {
+        const presets = await readCustomPresets();
+        const next = presets.filter((preset) => preset.id !== message.presetId);
+        await writeCustomPresets(next);
+        sendResponse({ ok: true, customPresets: next });
+        return;
+      }
+
       case 'OFFSCREEN_STATUS': {
         if (message.tabId != null) {
+          const current = await getSessionState(message.tabId);
           await writeTabState(
             message.tabId,
             {
               enabled: Boolean(message.enabled),
               error: message.error ?? null
             },
-            { persist: false }
+            { persist: false, siteKey: current?.siteKey ?? null }
           );
         }
         sendResponse({ ok: true });
@@ -224,8 +445,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   try {
-    const state = await readTabState(tabId);
-    if (state.enabled) {
+    const state = await getSessionState(tabId);
+    if (state?.enabled) {
       await sendToOffscreen({ type: 'STOP_CAPTURE', tabId });
     }
     await clearTabState(tabId);
@@ -237,13 +458,15 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 chrome.tabCapture.onStatusChanged.addListener(async (info) => {
   if (info.status === 'stopped' || info.status === 'error') {
     try {
+      const current = await getSessionState(info.tabId);
+      if (!current) return;
       await writeTabState(
         info.tabId,
         {
           enabled: false,
           error: info.status === 'error' ? 'Chrome stopped tab audio capture.' : null
         },
-        { persist: false }
+        { persist: false, siteKey: current.siteKey }
       );
     } catch (error) {
       console.warn('[Audio+] capture status sync failed', error);
