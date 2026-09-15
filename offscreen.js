@@ -15,7 +15,8 @@ const NIGHT_DYNAMICS = Object.freeze({
   light: Object.freeze({ threshold: -24, knee: 12, ratio: 3, attack: 0.012, release: 0.25 }),
   strong: Object.freeze({ threshold: -32, knee: 18, ratio: 6, attack: 0.008, release: 0.35 })
 });
-const VOCAL_CROSSOVER_HZ = 180;
+const VOCAL_LOW_CROSSOVER_HZ = 180;
+const VOCAL_HIGH_CROSSOVER_HZ = 6500;
 
 function smoothParam(param, value, context, timeConstant = 0.015) {
   const now = context.currentTime;
@@ -48,23 +49,59 @@ async function notifyStatus(tabId, enabled, error = null) {
   }
 }
 
+function createStereoCenterReducer(context) {
+  const splitter = context.createChannelSplitter(2);
+  const leftToLeft = context.createGain();
+  const rightToLeft = context.createGain();
+  const leftToRight = context.createGain();
+  const rightToRight = context.createGain();
+  const merger = context.createChannelMerger(2);
+
+  splitter.connect(leftToLeft, 0);
+  splitter.connect(leftToRight, 0);
+  splitter.connect(rightToLeft, 1);
+  splitter.connect(rightToRight, 1);
+  leftToLeft.connect(merger, 0, 0);
+  rightToLeft.connect(merger, 0, 0);
+  leftToRight.connect(merger, 0, 1);
+  rightToRight.connect(merger, 0, 1);
+
+  return { splitter, leftToLeft, rightToLeft, leftToRight, rightToRight, merger };
+}
+
+function setCenterReduction(matrix, amount, context) {
+  const safeAmount = Math.max(0, Math.min(1, amount));
+  const directCoefficient = 1 - safeAmount / 2;
+  const crossCoefficient = -safeAmount / 2;
+  smoothParam(matrix.leftToLeft.gain, directCoefficient, context);
+  smoothParam(matrix.rightToRight.gain, directCoefficient, context);
+  smoothParam(matrix.rightToLeft.gain, crossCoefficient, context);
+  smoothParam(matrix.leftToRight.gain, crossCoefficient, context);
+}
+
+function disconnectMatrix(matrix) {
+  for (const node of [matrix.splitter, matrix.leftToLeft, matrix.rightToLeft, matrix.leftToRight, matrix.rightToRight, matrix.merger]) {
+    try { node.disconnect(); } catch {}
+  }
+}
+
 function disconnectVocalReducer(reducer) {
   for (const node of [
-    reducer.splitter,
-    reducer.leftToLeft,
-    reducer.rightToLeft,
-    reducer.leftToRight,
-    reducer.rightToRight,
-    reducer.merger,
-    reducer.processedFullGain,
-    reducer.processedHighpass,
-    reducer.processedHighGain,
-    reducer.originalLowpass,
-    reducer.bassPreserveGain,
+    reducer.dryGain,
+    reducer.lowpass,
+    reducer.lowGain,
+    reducer.midHighpass,
+    reducer.midLowpass,
+    reducer.midGain,
+    reducer.highpass,
+    reducer.highGain,
     reducer.output
   ]) {
     try { node.disconnect(); } catch {}
   }
+  disconnectMatrix(reducer.lowMatrix);
+  disconnectMatrix(reducer.midMatrix);
+  disconnectMatrix(reducer.highMatrix);
 }
 
 async function stopProcessor(tabId, { notify = true } = {}) {
@@ -97,21 +134,30 @@ async function stopProcessor(tabId, { notify = true } = {}) {
   if (notify) await notifyStatus(tabId, false);
 }
 
+function aggressiveVocalAmount(normalized) {
+  if (normalized <= 0) return 0;
+  return Math.min(1, Math.pow(normalized, 0.72) * 1.08);
+}
+
 function applyVocalReduction(processor, settings) {
   const reducer = processor.vocalReducer;
-  const amount = settings.bypass ? 0 : settings.vocalReduction / 100;
-  const directCoefficient = 1 - amount / 2;
-  const crossCoefficient = -amount / 2;
+  const normalized = settings.bypass ? 0 : settings.vocalReduction / 100;
+  const active = normalized > 0.001;
+  const aggressive = aggressiveVocalAmount(normalized);
 
-  smoothParam(reducer.leftToLeft.gain, directCoefficient, processor.context);
-  smoothParam(reducer.rightToRight.gain, directCoefficient, processor.context);
-  smoothParam(reducer.rightToLeft.gain, crossCoefficient, processor.context);
-  smoothParam(reducer.leftToRight.gain, crossCoefficient, processor.context);
+  smoothParam(reducer.dryGain.gain, active ? 0 : 1, processor.context);
+  smoothParam(reducer.lowGain.gain, active ? 1 : 0, processor.context);
+  smoothParam(reducer.midGain.gain, active ? 1 : 0, processor.context);
+  smoothParam(reducer.highGain.gain, active ? 1 : 0, processor.context);
 
-  const preserveBass = amount > 0 && settings.keepBass && !settings.bypass;
-  smoothParam(reducer.processedFullGain.gain, preserveBass ? 0 : 1, processor.context);
-  smoothParam(reducer.processedHighGain.gain, preserveBass ? 1 : 0, processor.context);
-  smoothParam(reducer.bassPreserveGain.gain, preserveBass ? 1 : 0, processor.context);
+  // Keep the musical foundation nearly untouched, attack the vocal band hard,
+  // and reduce the air band more gently to preserve cymbals and stereo ambience.
+  const lowAmount = settings.keepBass ? 0 : aggressive * 0.28;
+  const midAmount = aggressive;
+  const highAmount = aggressive * 0.42;
+  setCenterReduction(reducer.lowMatrix, lowAmount, processor.context);
+  setCenterReduction(reducer.midMatrix, midAmount, processor.context);
+  setCenterReduction(reducer.highMatrix, highAmount, processor.context);
 }
 
 function applySettings(processor, incoming) {
@@ -162,60 +208,70 @@ function createCompressor(context, values) {
 }
 
 function createVocalReducer(context, input) {
-  const splitter = context.createChannelSplitter(2);
-  const leftToLeft = context.createGain();
-  const rightToLeft = context.createGain();
-  const leftToRight = context.createGain();
-  const rightToRight = context.createGain();
-  const merger = context.createChannelMerger(2);
-  const processedFullGain = context.createGain();
-  const processedHighpass = context.createBiquadFilter();
-  const processedHighGain = context.createGain();
-  const originalLowpass = context.createBiquadFilter();
-  const bassPreserveGain = context.createGain();
+  const dryGain = context.createGain();
   const output = context.createGain();
 
-  processedHighpass.type = 'highpass';
-  processedHighpass.frequency.value = VOCAL_CROSSOVER_HZ;
-  processedHighpass.Q.value = 0.707;
-  originalLowpass.type = 'lowpass';
-  originalLowpass.frequency.value = VOCAL_CROSSOVER_HZ;
-  originalLowpass.Q.value = 0.707;
-  processedFullGain.gain.value = 1;
-  processedHighGain.gain.value = 0;
-  bassPreserveGain.gain.value = 0;
+  const lowpass = context.createBiquadFilter();
+  lowpass.type = 'lowpass';
+  lowpass.frequency.value = VOCAL_LOW_CROSSOVER_HZ;
+  lowpass.Q.value = 0.707;
+  const lowMatrix = createStereoCenterReducer(context);
+  const lowGain = context.createGain();
 
-  input.connect(splitter);
-  splitter.connect(leftToLeft, 0);
-  splitter.connect(leftToRight, 0);
-  splitter.connect(rightToLeft, 1);
-  splitter.connect(rightToRight, 1);
-  leftToLeft.connect(merger, 0, 0);
-  rightToLeft.connect(merger, 0, 0);
-  leftToRight.connect(merger, 0, 1);
-  rightToRight.connect(merger, 0, 1);
+  const midHighpass = context.createBiquadFilter();
+  midHighpass.type = 'highpass';
+  midHighpass.frequency.value = VOCAL_LOW_CROSSOVER_HZ;
+  midHighpass.Q.value = 0.707;
+  const midLowpass = context.createBiquadFilter();
+  midLowpass.type = 'lowpass';
+  midLowpass.frequency.value = VOCAL_HIGH_CROSSOVER_HZ;
+  midLowpass.Q.value = 0.707;
+  const midMatrix = createStereoCenterReducer(context);
+  const midGain = context.createGain();
 
-  merger.connect(processedFullGain);
-  processedFullGain.connect(output);
-  merger.connect(processedHighpass);
-  processedHighpass.connect(processedHighGain);
-  processedHighGain.connect(output);
-  input.connect(originalLowpass);
-  originalLowpass.connect(bassPreserveGain);
-  bassPreserveGain.connect(output);
+  const highpass = context.createBiquadFilter();
+  highpass.type = 'highpass';
+  highpass.frequency.value = VOCAL_HIGH_CROSSOVER_HZ;
+  highpass.Q.value = 0.707;
+  const highMatrix = createStereoCenterReducer(context);
+  const highGain = context.createGain();
+
+  dryGain.gain.value = 1;
+  lowGain.gain.value = 0;
+  midGain.gain.value = 0;
+  highGain.gain.value = 0;
+
+  input.connect(dryGain);
+  dryGain.connect(output);
+
+  input.connect(lowpass);
+  lowpass.connect(lowMatrix.splitter);
+  lowMatrix.merger.connect(lowGain);
+  lowGain.connect(output);
+
+  input.connect(midHighpass);
+  midHighpass.connect(midLowpass);
+  midLowpass.connect(midMatrix.splitter);
+  midMatrix.merger.connect(midGain);
+  midGain.connect(output);
+
+  input.connect(highpass);
+  highpass.connect(highMatrix.splitter);
+  highMatrix.merger.connect(highGain);
+  highGain.connect(output);
 
   return {
-    splitter,
-    leftToLeft,
-    rightToLeft,
-    leftToRight,
-    rightToRight,
-    merger,
-    processedFullGain,
-    processedHighpass,
-    processedHighGain,
-    originalLowpass,
-    bassPreserveGain,
+    dryGain,
+    lowpass,
+    lowMatrix,
+    lowGain,
+    midHighpass,
+    midLowpass,
+    midMatrix,
+    midGain,
+    highpass,
+    highMatrix,
+    highGain,
     output
   };
 }
@@ -307,6 +363,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           limiterReductionDb: processor.peakLimiter.reduction,
           vocalReduction: processor.settings.vocalReduction,
           keepBass: processor.settings.keepBass,
+          vocalBandHz: [VOCAL_LOW_CROSSOVER_HZ, VOCAL_HIGH_CROSSOVER_HZ],
           audioTracks: processor.stream.getAudioTracks().length
         });
         return;
