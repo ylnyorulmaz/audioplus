@@ -2,43 +2,58 @@
 
 Audio+ is a local-first Chrome audio enhancement extension. It captures only the tab the user explicitly enables and processes its audio on-device with the Web Audio API.
 
-Current version: **V2.2 / 0.6.0**.
+Current version: **V2.2.1 / 0.6.1**.
 
-## V2.2 features
+## V2.2.1: Aggressive Karaoke refinement
 
-Everything from V2.1 remains available: EQ, presets, custom presets, per-site profiles, Dialogue Boost, Night Mode, volume, bypass, auto headroom, and peak protection.
+V2.2.1 strengthens Vocal Reduction without adding AI stem separation.
 
-V2.2 adds **Vocal Reduction / Karaoke**.
+The previous V2.2 implementation used one broadband center-cancel matrix. V2.2.1 splits the signal into three regions so center attenuation can be stronger where lead vocals usually dominate and gentler where damage is more obvious:
 
-### Vocal Reduction
+- **Below ~180 Hz** — center reduction is disabled when Keep Bass is on. With Keep Bass off, only mild center reduction is applied.
+- **~180 Hz to 6.5 kHz** — strongest center attenuation. This is the main vocal-target band.
+- **Above ~6.5 kHz** — lighter center attenuation to retain more cymbal energy, air, ambience, and stereo detail.
 
-Vocal Reduction uses lightweight stereo center attenuation. It does not download an AI model and does not upload audio.
+The Vocal Reduction control remains 0-100%, but the internal response is now deliberately more aggressive than linear. The shortcuts are also stronger:
 
-The 0-100% control progressively attenuates content common to the left and right channels while preserving stereo side information. Three shortcuts are included:
-
-- **Light** — 35%
-- **Karaoke** — 70%
+- **Light** — 45%
+- **Karaoke** — 82%
 - **Instrumental** — 100%
 
-This works best when the lead vocal is mixed near the stereo center. It is intentionally called Vocal Reduction rather than Vocal Removal because results vary by recording.
+At 0%, Audio+ uses the untouched dry path so the karaoke graph does not color the sound when the feature is off.
 
 ### Keep Bass
 
-Center attenuation can also weaken centered kick and bass. **Keep Bass** preserves the original low-frequency region below roughly 180 Hz while applying vocal reduction mainly above that crossover.
+Keep Bass leaves the center below roughly 180 Hz intact. This protects kick, bass fundamentals, and other low-frequency center content while the vocal band is reduced much more strongly.
 
-Keep Bass is enabled by default.
+Keep Bass remains enabled by default.
 
-## Important karaoke limitations
+## Important limitations
 
-V2.2 is DSP, not stem separation. Results can be weak when:
+This is still stereo DSP, not source separation. It works best when the lead vocal is strongly centered and the instrumental arrangement has useful stereo separation.
+
+Results may still be limited when:
 
 - the source is mono;
-- the vocal is panned away from center;
-- the vocal has wide stereo doubling, delay, or reverb;
-- instruments share the same centered frequency content;
-- the mix already contains phase-processing or unusual stereo mastering.
+- vocals are panned, doubled, or spread in stereo;
+- vocal reverb/delay is wide;
+- centered guitars, snare, synths, or other instruments occupy the same band;
+- unusual phase processing is already present in the master.
 
-At aggressive settings, some centered drums, bass harmonics, or instruments may still be reduced.
+Aggressive Karaoke and Instrumental modes can remove more non-vocal center content than V2.2. That trade-off is intentional.
+
+## Other V2 features
+
+Everything from V2.1 and V2.2 remains available:
+
+- Bass / Mid / Treble and 10-band EQ
+- custom presets and per-site profiles
+- Dialogue Boost
+- Night Mode
+- master volume and auto headroom
+- peak protection
+- Vocal Reduction and Keep Bass
+- bypass and reset
 
 ## Audio graph
 
@@ -47,8 +62,10 @@ Tab capture
   -> Bass / Mid / Treble
   -> 10-band EQ
   -> Dialogue shaping
-  -> Stereo Vocal Reduction
-       -> optional bass-preservation crossover
+  -> Frequency-selective Vocal Reduction
+       -> low band <180 Hz
+       -> aggressive vocal band 180 Hz-6.5 kHz
+       -> gentler air band >6.5 kHz
   -> Preamp + auto headroom
   -> Night Mode compressor
   -> Master volume
@@ -60,7 +77,7 @@ Bypass neutralizes EQ, Dialogue Boost, Vocal Reduction, Night Mode, gain changes
 
 ## Persistence
 
-Vocal Reduction and Keep Bass are normal Audio+ settings. They persist globally and inside per-site profiles. Reset returns Vocal Reduction to 0% and Keep Bass to On.
+Vocal Reduction and Keep Bass remain normal Audio+ settings. They persist globally and inside per-site profiles. Reset returns Vocal Reduction to 0% and Keep Bass to On.
 
 ## Run locally
 
@@ -70,24 +87,24 @@ npm test
 
 Then open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, select this repository, play media in a normal tab, and click **Enable Audio+**.
 
-## V2.2 manual acceptance test
+## V2.2.1 manual acceptance test
 
 - 0% Vocal Reduction sounds neutral.
 - Light, Karaoke, and Instrumental progressively reduce a centered lead vocal.
-- Keep Bass On retains noticeably more kick/bass than Keep Bass Off on suitable material.
-- Mono content does not crash the processor, even if the effect is limited.
+- Karaoke is audibly stronger than V2.2's previous 70% shortcut.
+- Keep Bass On retains more kick and bass than Keep Bass Off.
+- Cymbals and stereo ambience survive better than with full-band center cancellation.
+- Mono or wide-vocal content does not crash the processor, even if cancellation is limited.
 - Bypass restores approximately original stereo balance and level.
-- Vocal settings persist globally and in site profiles.
-- Reset restores Vocal Reduction 0% and Keep Bass On.
-- Dialogue Boost, Night Mode, V1 EQ, profiles, capture lifecycle, and limiter still work.
+- Dialogue Boost, Night Mode, EQ, profiles, capture lifecycle, and limiter still work.
 
 ## Privacy
 
-Audio stays on the device. V2.2 adds no backend, analytics, account, remote code, model download, or audio upload. See [PRIVACY.md](PRIVACY.md).
+Audio stays on the device. V2.2.1 adds no backend, analytics, account, remote code, model download, or audio upload. See [PRIVACY.md](PRIVACY.md).
 
 ## Next
 
-V2.3 is planned around **Smart Fix / automatic audio analysis**. AI stem separation remains outside this lightweight V2.2 karaoke implementation.
+V2.3 is planned around **Smart Fix / automatic audio analysis**. AI stem separation remains outside this lightweight karaoke path.
 
 ## License
 
