@@ -1,5 +1,7 @@
 export const EQ_FREQUENCIES = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 export const NIGHT_MODES = Object.freeze(['off', 'light', 'strong']);
+export const SMART_FIX_MAX_DB = 3;
+export const FLAT_SMART_FIX_BANDS = Object.freeze(EQ_FREQUENCIES.map(() => 0));
 
 export const DEFAULT_SETTINGS = Object.freeze({
   bassDb: 0,
@@ -13,6 +15,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   nightMode: 'off',
   vocalReduction: 0,
   keepBass: true,
+  smartFixEnabled: false,
+  smartFixBands: FLAT_SMART_FIX_BANDS,
   bypass: false
 });
 
@@ -24,6 +28,11 @@ export function clamp(value, min, max) {
 
 export function sanitizeNightMode(value) {
   return NIGHT_MODES.includes(value) ? value : DEFAULT_SETTINGS.nightMode;
+}
+
+export function sanitizeSmartFixBands(value) {
+  const incoming = Array.isArray(value) ? value : FLAT_SMART_FIX_BANDS;
+  return EQ_FREQUENCIES.map((_, index) => clamp(incoming[index] ?? 0, -SMART_FIX_MAX_DB, SMART_FIX_MAX_DB));
 }
 
 export function sanitizeSettings(input = {}) {
@@ -41,6 +50,8 @@ export function sanitizeSettings(input = {}) {
     nightMode: sanitizeNightMode(input.nightMode),
     vocalReduction: clamp(input.vocalReduction ?? DEFAULT_SETTINGS.vocalReduction, 0, 100),
     keepBass: Boolean(input.keepBass ?? DEFAULT_SETTINGS.keepBass),
+    smartFixEnabled: Boolean(input.smartFixEnabled ?? DEFAULT_SETTINGS.smartFixEnabled),
+    smartFixBands: sanitizeSmartFixBands(input.smartFixBands),
     bypass: Boolean(input.bypass ?? DEFAULT_SETTINGS.bypass)
   };
 }
@@ -53,7 +64,8 @@ export function calculateHeadroomDb(settings) {
   const maxMacroBoost = Math.max(0, safe.bassDb, safe.midDb, safe.trebleDb);
   const positivePreamp = Math.max(0, safe.preampDb);
   const dialoguePresenceBoost = safe.dialogueBoost / 100 * 3;
-  const estimatedBoost = maxEqBoost + maxMacroBoost + positivePreamp + dialoguePresenceBoost;
+  const smartFixBoost = safe.smartFixEnabled ? Math.max(0, ...safe.smartFixBands) : 0;
+  const estimatedBoost = maxEqBoost + maxMacroBoost + positivePreamp + dialoguePresenceBoost + smartFixBoost;
 
   return -Math.min(18, estimatedBoost);
 }
