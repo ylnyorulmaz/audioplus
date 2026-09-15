@@ -65,13 +65,23 @@
 
     <section class="section" aria-labelledby="customPresetHeading"><div class="section-title" id="customPresetHeading">Custom presets</div><div class="preset-library-row"><select id="customPresetSelect" aria-label="Saved custom presets"><option value="">No saved presets</option></select><button id="applyCustomPreset" class="small-button" type="button" disabled>Apply</button><button id="deleteCustomPreset" class="small-button danger" type="button" disabled>Delete</button></div><div class="save-preset-row"><input id="customPresetName" type="text" maxlength="40" placeholder="Preset name" aria-label="Preset name" /><button id="saveCustomPreset" class="small-button" type="button">Save current</button></div></section>
 
-    <details id="advancedPanel" class="advanced"><summary>Advanced <span>10-band EQ + preamp</span></summary><div id="eqGrid" class="eq-grid" aria-label="10-band equalizer"></div><div class="advanced-footer"><div class="control-group compact"><div class="control-heading"><label for="preampSlider">Preamp</label><output id="preampValue" for="preampSlider">0 dB</output></div><input id="preampSlider" type="range" min="-12" max="6" step="0.5" value="0" /></div><label class="toggle-row" for="autoHeadroom"><span><strong>Auto headroom</strong><small id="headroomValue">0 dB compensation</small></span><input id="autoHeadroom" type="checkbox" checked /></label></div></details>
+    <details id="advancedPanel" class="advanced">
+      <summary>Advanced <span>Analyzer + 10-band EQ</span></summary>
+      <div class="spectrum-panel" aria-label="Live input spectrum">
+        <div class="spectrum-heading"><strong>Live spectrum</strong><span id="spectrumStatus">Idle</span></div>
+        <div id="spectrumBars" class="spectrum-bars"></div>
+        <div id="spectrumMetrics" class="spectrum-metrics">Enable Audio+ to view the live input spectrum.</div>
+      </div>
+      <div id="eqGrid" class="eq-grid" aria-label="10-band equalizer"></div>
+      <div class="advanced-footer"><div class="control-group compact"><div class="control-heading"><label for="preampSlider">Preamp</label><output id="preampValue" for="preampSlider">0 dB</output></div><input id="preampSlider" type="range" min="-12" max="6" step="0.5" value="0" /></div><label class="toggle-row" for="autoHeadroom"><span><strong>Auto headroom</strong><small id="headroomValue">0 dB compensation</small></span><input id="autoHeadroom" type="checkbox" checked /></label></div>
+    </details>
 
     <div class="actions"><button id="bypassButton" class="secondary" type="button" aria-pressed="false">Bypass</button><button id="resetButton" class="secondary" type="button">Reset</button></div>
-    <p id="message" class="message" role="status" aria-live="polite"></p><p class="privacy">Audio stays on your device. Presets, profiles, and Smart Fix settings are stored locally in Chrome.</p>
+    <p id="message" class="message" role="status" aria-live="polite"></p><p class="privacy">Audio stays on your device. Presets, profiles, Smart Fix, and analyzer data stay local in Chrome.</p>
   </main>
   <script type="module" src="popup.js"></script>
   <script type="module" src="v2-dynamics.js"></script>
   <script type="module" src="v2-smart-fix.js"></script>
+  <script type="module" src="v2-productization.js"></script>
 </body>
 </html>
