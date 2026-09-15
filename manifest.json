@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Audio+",
+  "version": "0.1.0",
+  "description": "Control the sound of the current browser tab with lightweight client-side audio processing.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "activeTab",
+    "offscreen",
+    "storage",
+    "tabCapture"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Audio+",
+    "default_popup": "popup.html"
+  }
+}
