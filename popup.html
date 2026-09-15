@@ -17,6 +17,12 @@
     </header>
 
     <button id="powerButton" class="power" type="button">Enable Audio+</button>
+    <p id="powerHint" class="power-hint">Enable processing for this tab.</p>
+
+    <section class="section" aria-labelledby="quickModesHeading">
+      <div class="section-title" id="quickModesHeading">Quick modes</div>
+      <div id="presetGrid" class="preset-grid" aria-label="Built-in audio presets"></div>
+    </section>
 
     <section class="section" aria-labelledby="toneHeading">
       <div class="section-title" id="toneHeading">Tone</div>
@@ -44,32 +50,7 @@
         </div>
         <input id="trebleSlider" type="range" min="-12" max="12" step="0.5" value="0" />
       </div>
-    </section>
 
-    <details class="advanced">
-      <summary>Advanced EQ <span>10-band</span></summary>
-      <div id="eqGrid" class="eq-grid" aria-label="10-band equalizer"></div>
-    </details>
-
-    <section class="section">
-      <div class="control-group compact">
-        <div class="control-heading">
-          <label for="preampSlider">Preamp</label>
-          <output id="preampValue" for="preampSlider">0 dB</output>
-        </div>
-        <input id="preampSlider" type="range" min="-12" max="6" step="0.5" value="0" />
-      </div>
-
-      <label class="toggle-row" for="autoHeadroom">
-        <span>
-          <strong>Auto headroom</strong>
-          <small id="headroomValue">0 dB compensation</small>
-        </span>
-        <input id="autoHeadroom" type="checkbox" checked />
-      </label>
-    </section>
-
-    <section class="section">
       <div class="control-group compact">
         <div class="control-heading">
           <label for="volumeSlider">Volume</label>
@@ -79,13 +60,62 @@
       </div>
     </section>
 
+    <section class="section" aria-labelledby="siteProfileHeading">
+      <div class="section-title" id="siteProfileHeading">This site</div>
+      <label class="toggle-row" for="siteProfileToggle">
+        <span>
+          <strong>Remember settings for this site</strong>
+          <small id="siteProfileHint">Uses your global settings.</small>
+        </span>
+        <input id="siteProfileToggle" type="checkbox" />
+      </label>
+    </section>
+
+    <section class="section" aria-labelledby="customPresetHeading">
+      <div class="section-title" id="customPresetHeading">Custom presets</div>
+      <div class="preset-library-row">
+        <select id="customPresetSelect" aria-label="Saved custom presets">
+          <option value="">No saved presets</option>
+        </select>
+        <button id="applyCustomPreset" class="small-button" type="button" disabled>Apply</button>
+        <button id="deleteCustomPreset" class="small-button danger" type="button" disabled>Delete</button>
+      </div>
+      <div class="save-preset-row">
+        <input id="customPresetName" type="text" maxlength="40" placeholder="Preset name" aria-label="Preset name" />
+        <button id="saveCustomPreset" class="small-button" type="button">Save current</button>
+      </div>
+    </section>
+
+    <details id="advancedPanel" class="advanced">
+      <summary>Advanced <span>10-band EQ + preamp</span></summary>
+      <div id="eqGrid" class="eq-grid" aria-label="10-band equalizer"></div>
+
+      <div class="advanced-footer">
+        <div class="control-group compact">
+          <div class="control-heading">
+            <label for="preampSlider">Preamp</label>
+            <output id="preampValue" for="preampSlider">0 dB</output>
+          </div>
+          <input id="preampSlider" type="range" min="-12" max="6" step="0.5" value="0" />
+        </div>
+
+        <label class="toggle-row" for="autoHeadroom">
+          <span>
+            <strong>Auto headroom</strong>
+            <small id="headroomValue">0 dB compensation</small>
+          </span>
+          <input id="autoHeadroom" type="checkbox" checked />
+        </label>
+      </div>
+    </details>
+
     <div class="actions">
       <button id="bypassButton" class="secondary" type="button" aria-pressed="false">Bypass</button>
       <button id="resetButton" class="secondary" type="button">Reset</button>
     </div>
 
     <p id="message" class="message" role="status" aria-live="polite"></p>
-    <p class="privacy">Settings persist locally. Audio never leaves your device.</p>
+    <p class="privacy">Audio stays on your device. Presets and profiles are stored locally in Chrome.</p>
   </main>
 
   <script type="module" src="popup.js"></script>
