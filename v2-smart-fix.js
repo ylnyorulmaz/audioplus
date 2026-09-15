@@ -75,16 +75,19 @@ async function runSmartFix() {
   if (!activeTab || busy) return;
   busy = true;
   renderResult();
+  let result = null;
+  let errorText = '';
   try {
     const response = await chrome.runtime.sendMessage({ type: 'RUN_SMART_FIX', tabId: activeTab.id, siteKey });
     if (!response?.ok) throw new Error(response?.error ?? 'Smart Fix could not analyze this audio.');
     state = { ...response.state, ...sanitizeSettings(response.state) };
-    renderResult(response.smartFixResult ?? null);
+    result = response.smartFixResult ?? null;
   } catch (error) {
-    smartFixResult.textContent = error?.message ?? String(error);
+    errorText = error?.message ?? String(error);
   } finally {
     busy = false;
-    renderResult(state?.smartFixResult ?? null);
+    renderResult(result);
+    if (errorText) smartFixResult.textContent = errorText;
   }
 }
 
@@ -92,16 +95,17 @@ async function clearSmartFix() {
   if (!activeTab || busy) return;
   busy = true;
   renderResult();
+  let errorText = '';
   try {
     const response = await chrome.runtime.sendMessage({ type: 'CLEAR_SMART_FIX', tabId: activeTab.id, siteKey });
     if (!response?.ok) throw new Error(response?.error ?? 'Could not clear Smart Fix.');
     state = { ...response.state, ...sanitizeSettings(response.state) };
-    smartFixResult.textContent = 'Smart Fix cleared. Manual EQ and other Audio+ settings were left unchanged.';
   } catch (error) {
-    smartFixResult.textContent = error?.message ?? String(error);
+    errorText = error?.message ?? String(error);
   } finally {
     busy = false;
     renderResult();
+    smartFixResult.textContent = errorText || 'Smart Fix cleared. Manual EQ and other Audio+ settings were left unchanged.';
   }
 }
 
