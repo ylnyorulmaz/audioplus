@@ -1,8 +1,12 @@
-const processors = new Map();
+import {
+  EQ_FREQUENCIES,
+  DEFAULT_SETTINGS,
+  sanitizeSettings,
+  effectivePreampDb,
+  dbToGain
+} from './audio-settings.js';
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, Number(value)));
-}
+const processors = new Map();
 
 function smoothParam(param, value, context, timeConstant = 0.015) {
   const now = context.currentTime;
@@ -39,7 +43,11 @@ async function stopProcessor(tabId, { notify = true } = {}) {
 
   try {
     processor.source.disconnect();
-    processor.bassFilter.disconnect();
+    processor.bassMacro.disconnect();
+    processor.midMacro.disconnect();
+    processor.trebleMacro.disconnect();
+    for (const filter of processor.eqFilters) filter.disconnect();
+    processor.preampGain.disconnect();
     processor.masterGain.disconnect();
   } catch {
     // Nodes may already be disconnected during teardown.
@@ -52,27 +60,40 @@ async function stopProcessor(tabId, { notify = true } = {}) {
   if (notify) await notifyStatus(tabId, false);
 }
 
-function applySettings(processor, settings) {
-  processor.settings = {
-    ...processor.settings,
-    ...settings
-  };
+function applySettings(processor, incoming) {
+  const settings = sanitizeSettings({ ...processor.settings, ...incoming });
+  processor.settings = settings;
 
-  const bypass = Boolean(processor.settings.bypass);
-  const bassDb = clamp(processor.settings.bassDb ?? 0, -12, 12);
-  const volume = clamp(processor.settings.volume ?? 100, 0, 150);
+  const bypass = settings.bypass;
+
+  smoothParam(processor.bassMacro.gain, bypass ? 0 : settings.bassDb, processor.context);
+  smoothParam(processor.midMacro.gain, bypass ? 0 : settings.midDb, processor.context);
+  smoothParam(processor.trebleMacro.gain, bypass ? 0 : settings.trebleDb, processor.context);
+
+  processor.eqFilters.forEach((filter, index) => {
+    smoothParam(filter.gain, bypass ? 0 : settings.eqBands[index], processor.context);
+  });
 
   smoothParam(
-    processor.bassFilter.gain,
-    bypass ? 0 : bassDb,
+    processor.preampGain.gain,
+    bypass ? 1 : dbToGain(effectivePreampDb(settings)),
     processor.context
   );
 
   smoothParam(
     processor.masterGain.gain,
-    bypass ? 1 : volume / 100,
+    bypass ? 1 : settings.volume / 100,
     processor.context
   );
+}
+
+function createEqFilter(context, frequency) {
+  const filter = context.createBiquadFilter();
+  filter.type = 'peaking';
+  filter.frequency.value = frequency;
+  filter.Q.value = 1.4;
+  filter.gain.value = 0;
+  return filter;
 }
 
 async function startProcessor(tabId, streamId, settings) {
@@ -99,16 +120,39 @@ async function startProcessor(tabId, streamId, settings) {
     }
 
     const source = context.createMediaStreamSource(stream);
-    const bassFilter = context.createBiquadFilter();
+
+    const bassMacro = context.createBiquadFilter();
+    bassMacro.type = 'lowshelf';
+    bassMacro.frequency.value = 180;
+    bassMacro.gain.value = 0;
+
+    const midMacro = context.createBiquadFilter();
+    midMacro.type = 'peaking';
+    midMacro.frequency.value = 1000;
+    midMacro.Q.value = 0.7;
+    midMacro.gain.value = 0;
+
+    const trebleMacro = context.createBiquadFilter();
+    trebleMacro.type = 'highshelf';
+    trebleMacro.frequency.value = 4500;
+    trebleMacro.gain.value = 0;
+
+    const eqFilters = EQ_FREQUENCIES.map((frequency) => createEqFilter(context, frequency));
+    const preampGain = context.createGain();
     const masterGain = context.createGain();
 
-    bassFilter.type = 'lowshelf';
-    bassFilter.frequency.value = 120;
-    bassFilter.gain.value = 0;
-    masterGain.gain.value = 1;
+    source.connect(bassMacro);
+    bassMacro.connect(midMacro);
+    midMacro.connect(trebleMacro);
 
-    source.connect(bassFilter);
-    bassFilter.connect(masterGain);
+    let previous = trebleMacro;
+    for (const filter of eqFilters) {
+      previous.connect(filter);
+      previous = filter;
+    }
+
+    previous.connect(preampGain);
+    preampGain.connect(masterGain);
     masterGain.connect(context.destination);
 
     const processor = {
@@ -116,13 +160,13 @@ async function startProcessor(tabId, streamId, settings) {
       context,
       stream,
       source,
-      bassFilter,
+      bassMacro,
+      midMacro,
+      trebleMacro,
+      eqFilters,
+      preampGain,
       masterGain,
-      settings: {
-        bassDb: 0,
-        volume: 100,
-        bypass: false
-      }
+      settings: sanitizeSettings(DEFAULT_SETTINGS)
     };
 
     processors.set(tabId, processor);
@@ -165,30 +209,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       case 'STOP_CAPTURE': {
         await stopProcessor(message.tabId);
-        sendResponse({ ok: true });
-        return;
-      }
-
-      case 'SET_BASS': {
-        const processor = processors.get(message.tabId);
-        if (!processor) throw new Error('No active processor for this tab.');
-        applySettings(processor, { bassDb: message.value });
-        sendResponse({ ok: true });
-        return;
-      }
-
-      case 'SET_VOLUME': {
-        const processor = processors.get(message.tabId);
-        if (!processor) throw new Error('No active processor for this tab.');
-        applySettings(processor, { volume: message.value });
-        sendResponse({ ok: true });
-        return;
-      }
-
-      case 'SET_BYPASS': {
-        const processor = processors.get(message.tabId);
-        if (!processor) throw new Error('No active processor for this tab.');
-        applySettings(processor, { bypass: message.value });
         sendResponse({ ok: true });
         return;
       }
