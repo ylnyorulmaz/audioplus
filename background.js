@@ -1,5 +1,6 @@
 import { DEFAULT_SETTINGS, sanitizeSettings } from './audio-settings.js';
 import { presetSnapshot, sanitizePresetName } from './presets.js';
+import { buildSmartFix } from './smart-fix.js';
 
 const OFFSCREEN_PATH = 'offscreen.html';
 const STATE_PREFIX = 'audioPlus.tab.';
@@ -13,29 +14,19 @@ let creatingOffscreen = null;
 
 async function ensureOffscreenDocument() {
   const offscreenUrl = chrome.runtime.getURL(OFFSCREEN_PATH);
-  const contexts = await chrome.runtime.getContexts({
-    contextTypes: ['OFFSCREEN_DOCUMENT'],
-    documentUrls: [offscreenUrl]
-  });
-
+  const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'], documentUrls: [offscreenUrl] });
   if (contexts.length > 0) return;
-
   if (!creatingOffscreen) {
     creatingOffscreen = chrome.offscreen.createDocument({
       url: OFFSCREEN_PATH,
       reasons: ['USER_MEDIA', 'AUDIO_PLAYBACK'],
       justification: 'Capture the user-selected tab audio, process it with Web Audio, and play the processed sound back.'
-    }).finally(() => {
-      creatingOffscreen = null;
-    });
+    }).finally(() => { creatingOffscreen = null; });
   }
-
   await creatingOffscreen;
 }
 
-function stateKey(tabId) {
-  return `${STATE_PREFIX}${tabId}`;
-}
+function stateKey(tabId) { return `${STATE_PREFIX}${tabId}`; }
 
 function normalizeSiteKey(value) {
   const siteKey = String(value ?? '').trim().toLowerCase();
@@ -44,14 +35,10 @@ function normalizeSiteKey(value) {
   return siteKey;
 }
 
-function settingsFromState(state) {
-  return sanitizeSettings(state);
-}
+function settingsFromState(state) { return sanitizeSettings(state); }
 
 function settingsPatch(patch) {
-  return Object.fromEntries(
-    Object.entries(patch ?? {}).filter(([key]) => SETTING_KEYS.has(key))
-  );
+  return Object.fromEntries(Object.entries(patch ?? {}).filter(([key]) => SETTING_KEYS.has(key)));
 }
 
 async function readGlobalSettings() {
@@ -71,15 +58,12 @@ async function readSiteProfiles() {
   return profiles && typeof profiles === 'object' && !Array.isArray(profiles) ? profiles : {};
 }
 
-async function writeSiteProfiles(profiles) {
-  await chrome.storage.local.set({ [SITE_PROFILES_KEY]: profiles });
-}
+async function writeSiteProfiles(profiles) { await chrome.storage.local.set({ [SITE_PROFILES_KEY]: profiles }); }
 
 async function readCustomPresets() {
   const result = await chrome.storage.local.get(CUSTOM_PRESETS_KEY);
   const presets = result[CUSTOM_PRESETS_KEY];
   if (!Array.isArray(presets)) return [];
-
   return presets
     .filter((preset) => preset && typeof preset === 'object')
     .map((preset) => ({
@@ -93,9 +77,7 @@ async function readCustomPresets() {
     .slice(0, MAX_CUSTOM_PRESETS);
 }
 
-async function writeCustomPresets(presets) {
-  await chrome.storage.local.set({ [CUSTOM_PRESETS_KEY]: presets.slice(0, MAX_CUSTOM_PRESETS) });
-}
+async function writeCustomPresets(presets) { await chrome.storage.local.set({ [CUSTOM_PRESETS_KEY]: presets.slice(0, MAX_CUSTOM_PRESETS) }); }
 
 async function getSiteProfile(siteKey) {
   const normalized = normalizeSiteKey(siteKey);
@@ -103,16 +85,10 @@ async function getSiteProfile(siteKey) {
   const profiles = await readSiteProfiles();
   const profile = profiles[normalized];
   if (!profile?.settings) return null;
-  return {
-    siteKey: normalized,
-    settings: sanitizeSettings(profile.settings),
-    updatedAt: Number(profile.updatedAt) || 0
-  };
+  return { siteKey: normalized, settings: sanitizeSettings(profile.settings), updatedAt: Number(profile.updatedAt) || 0 };
 }
 
-async function isSiteProfileActive(siteKey) {
-  return Boolean(await getSiteProfile(siteKey));
-}
+async function isSiteProfileActive(siteKey) { return Boolean(await getSiteProfile(siteKey)); }
 
 async function readPersistentSettings(siteKey) {
   const profile = await getSiteProfile(siteKey);
@@ -123,19 +99,14 @@ async function readPersistentSettings(siteKey) {
 async function persistSettings(settings, siteKey) {
   const safe = sanitizeSettings(settings);
   const normalized = normalizeSiteKey(siteKey);
-
   if (normalized) {
     const profiles = await readSiteProfiles();
     if (profiles[normalized]) {
-      profiles[normalized] = {
-        settings: safe,
-        updatedAt: Date.now()
-      };
+      profiles[normalized] = { settings: safe, updatedAt: Date.now() };
       await writeSiteProfiles(profiles);
       return safe;
     }
   }
-
   return writeGlobalSettings(safe);
 }
 
@@ -153,15 +124,9 @@ async function setSessionState(tabId, state) {
 async function readTabState(tabId, siteKey = null) {
   const current = await getSessionState(tabId);
   if (current) return current;
-
   const normalized = normalizeSiteKey(siteKey);
   const settings = await readPersistentSettings(normalized);
-  return setSessionState(tabId, {
-    ...settings,
-    enabled: false,
-    error: null,
-    siteKey: normalized
-  });
+  return setSessionState(tabId, { ...settings, enabled: false, error: null, siteKey: normalized, smartFixResult: null });
 }
 
 async function writeTabState(tabId, patch, { persist = true, siteKey = null } = {}) {
@@ -169,54 +134,28 @@ async function writeTabState(tabId, patch, { persist = true, siteKey = null } = 
   const incomingSettings = settingsPatch(patch);
   const nextSettings = sanitizeSettings({ ...current, ...incomingSettings });
   const normalized = normalizeSiteKey(siteKey) ?? current.siteKey ?? null;
-  const next = {
-    ...current,
-    ...nextSettings,
-    ...patch,
-    siteKey: normalized
-  };
-
+  const next = { ...current, ...nextSettings, ...patch, siteKey: normalized };
   await setSessionState(tabId, next);
-
-  if (persist && Object.keys(incomingSettings).length > 0) {
-    await persistSettings(nextSettings, normalized);
-  }
-
+  if (persist && Object.keys(incomingSettings).length > 0) await persistSettings(nextSettings, normalized);
   return next;
 }
 
 async function syncTabSiteContext(tabId, siteKey) {
   const normalized = normalizeSiteKey(siteKey);
   const current = await getSessionState(tabId);
-
   if (!current) return readTabState(tabId, normalized);
   if (!normalized || current.siteKey === normalized) return current;
-
   const settings = await readPersistentSettings(normalized);
-  const next = {
-    ...settings,
-    enabled: Boolean(current.enabled),
-    error: current.error ?? null,
-    siteKey: normalized
-  };
-
+  const next = { ...settings, enabled: Boolean(current.enabled), error: current.error ?? null, siteKey: normalized, smartFixResult: null };
   await setSessionState(tabId, next);
-
   if (next.enabled) {
-    const result = await sendToOffscreen({
-      type: 'APPLY_SETTINGS',
-      tabId,
-      settings: settingsFromState(next)
-    });
+    const result = await sendToOffscreen({ type: 'APPLY_SETTINGS', tabId, settings: settingsFromState(next) });
     if (!result?.ok) throw new Error(result?.error ?? 'Could not switch site audio profile.');
   }
-
   return next;
 }
 
-async function clearTabState(tabId) {
-  await chrome.storage.session.remove(stateKey(tabId));
-}
+async function clearTabState(tabId) { await chrome.storage.session.remove(stateKey(tabId)); }
 
 async function sendToOffscreen(message) {
   await ensureOffscreenDocument();
@@ -226,12 +165,8 @@ async function sendToOffscreen(message) {
 async function enableSiteProfile(siteKey, settings) {
   const normalized = normalizeSiteKey(siteKey);
   if (!normalized) throw new Error('This page cannot use a site profile.');
-
   const profiles = await readSiteProfiles();
-  profiles[normalized] = {
-    settings: sanitizeSettings(settings),
-    updatedAt: Date.now()
-  };
+  profiles[normalized] = { settings: sanitizeSettings(settings), updatedAt: Date.now() };
   await writeSiteProfiles(profiles);
 }
 
@@ -249,187 +184,131 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   (async () => {
     switch (message.type) {
-      case 'ENSURE_OFFSCREEN': {
-        await ensureOffscreenDocument();
-        sendResponse({ ok: true });
-        return;
-      }
+      case 'ENSURE_OFFSCREEN':
+        await ensureOffscreenDocument(); sendResponse({ ok: true }); return;
 
       case 'GET_TAB_STATE': {
         const state = await syncTabSiteContext(message.tabId, message.siteKey);
-        const [siteProfileActive, customPresets] = await Promise.all([
-          isSiteProfileActive(message.siteKey),
-          readCustomPresets()
-        ]);
-        sendResponse({ ok: true, state, siteProfileActive, customPresets });
-        return;
+        const [siteProfileActive, customPresets] = await Promise.all([isSiteProfileActive(message.siteKey), readCustomPresets()]);
+        sendResponse({ ok: true, state, siteProfileActive, customPresets }); return;
       }
 
       case 'START_CAPTURE': {
         await ensureOffscreenDocument();
-
         const current = await syncTabSiteContext(message.tabId, message.siteKey);
         const requested = sanitizeSettings({ ...current, ...(message.settings ?? {}) });
-        const state = await writeTabState(
-          message.tabId,
-          { ...requested, enabled: false, error: null },
-          { persist: true, siteKey: message.siteKey }
-        );
-
-        const streamId = await chrome.tabCapture.getMediaStreamId({
-          targetTabId: message.tabId
-        });
-
-        const result = await chrome.runtime.sendMessage({
-          target: 'offscreen',
-          type: 'START_CAPTURE',
-          tabId: message.tabId,
-          streamId,
-          settings: settingsFromState(state)
-        });
-
+        const state = await writeTabState(message.tabId, { ...requested, enabled: false, error: null }, { persist: true, siteKey: message.siteKey });
+        const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: message.tabId });
+        const result = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'START_CAPTURE', tabId: message.tabId, streamId, settings: settingsFromState(state) });
         if (!result?.ok) {
           const error = result?.error ?? 'Could not start audio processing.';
-          await writeTabState(
-            message.tabId,
-            { enabled: false, error },
-            { persist: false, siteKey: message.siteKey }
-          );
-          sendResponse({ ok: false, error });
-          return;
+          await writeTabState(message.tabId, { enabled: false, error }, { persist: false, siteKey: message.siteKey });
+          sendResponse({ ok: false, error }); return;
         }
-
-        const next = await writeTabState(
-          message.tabId,
-          { enabled: true, error: null },
-          { persist: false, siteKey: message.siteKey }
-        );
-        sendResponse({ ok: true, state: next });
-        return;
+        const next = await writeTabState(message.tabId, { enabled: true, error: null }, { persist: false, siteKey: message.siteKey });
+        sendResponse({ ok: true, state: next }); return;
       }
 
       case 'STOP_CAPTURE': {
         await sendToOffscreen({ type: 'STOP_CAPTURE', tabId: message.tabId });
-        const next = await writeTabState(
-          message.tabId,
-          { enabled: false, error: null },
-          { persist: false, siteKey: message.siteKey }
-        );
-        sendResponse({ ok: true, state: next });
-        return;
+        const next = await writeTabState(message.tabId, { enabled: false, error: null }, { persist: false, siteKey: message.siteKey });
+        sendResponse({ ok: true, state: next }); return;
       }
 
       case 'UPDATE_SETTINGS': {
         const current = await syncTabSiteContext(message.tabId, message.siteKey);
         const requested = sanitizeSettings({ ...current, ...(message.patch ?? {}) });
-        const next = await writeTabState(
-          message.tabId,
-          requested,
-          { persist: true, siteKey: message.siteKey }
-        );
-
+        const next = await writeTabState(message.tabId, requested, { persist: true, siteKey: message.siteKey });
         if (next.enabled) {
-          const result = await sendToOffscreen({
-            type: 'APPLY_SETTINGS',
-            tabId: message.tabId,
-            settings: settingsFromState(next)
-          });
+          const result = await sendToOffscreen({ type: 'APPLY_SETTINGS', tabId: message.tabId, settings: settingsFromState(next) });
           if (!result?.ok) throw new Error(result?.error ?? 'Could not apply audio settings.');
         }
+        sendResponse({ ok: true, state: next }); return;
+      }
 
-        sendResponse({ ok: true, state: next });
-        return;
+      case 'RUN_SMART_FIX': {
+        const current = await syncTabSiteContext(message.tabId, message.siteKey);
+        if (!current.enabled) throw new Error('Enable Audio+ and play audio before running Smart Fix.');
+        const analysis = await sendToOffscreen({ type: 'ANALYZE_AUDIO', tabId: message.tabId });
+        if (!analysis?.ok) throw new Error(analysis?.error ?? 'Could not analyze this audio.');
+        const fix = buildSmartFix(analysis.metrics);
+        const resultSummary = { summary: fix.summary, scores: fix.scores, issues: fix.issues, metrics: analysis.metrics, bands: fix.bands };
+        const next = await writeTabState(
+          message.tabId,
+          { smartFixEnabled: true, smartFixBands: fix.bands, smartFixResult: resultSummary },
+          { persist: true, siteKey: message.siteKey }
+        );
+        const applied = await sendToOffscreen({ type: 'APPLY_SETTINGS', tabId: message.tabId, settings: settingsFromState(next) });
+        if (!applied?.ok) throw new Error(applied?.error ?? 'Could not apply Smart Fix.');
+        sendResponse({ ok: true, state: next, smartFixResult: resultSummary }); return;
+      }
+
+      case 'CLEAR_SMART_FIX': {
+        const current = await syncTabSiteContext(message.tabId, message.siteKey);
+        const next = await writeTabState(
+          message.tabId,
+          { smartFixEnabled: false, smartFixBands: [...DEFAULT_SETTINGS.smartFixBands], smartFixResult: null },
+          { persist: true, siteKey: message.siteKey }
+        );
+        if (current.enabled) {
+          const applied = await sendToOffscreen({ type: 'APPLY_SETTINGS', tabId: message.tabId, settings: settingsFromState(next) });
+          if (!applied?.ok) throw new Error(applied?.error ?? 'Could not clear Smart Fix.');
+        }
+        sendResponse({ ok: true, state: next }); return;
       }
 
       case 'RESET_AUDIO': {
         const resetSettings = sanitizeSettings(DEFAULT_SETTINGS);
-        const next = await writeTabState(
-          message.tabId,
-          resetSettings,
-          { persist: true, siteKey: message.siteKey }
-        );
+        const next = await writeTabState(message.tabId, { ...resetSettings, smartFixResult: null }, { persist: true, siteKey: message.siteKey });
         if (next.enabled) {
-          const result = await sendToOffscreen({
-            type: 'APPLY_SETTINGS',
-            tabId: message.tabId,
-            settings: resetSettings
-          });
+          const result = await sendToOffscreen({ type: 'APPLY_SETTINGS', tabId: message.tabId, settings: resetSettings });
           if (!result?.ok) throw new Error(result?.error ?? 'Could not reset audio settings.');
         }
-        sendResponse({ ok: true, state: next });
-        return;
+        sendResponse({ ok: true, state: next }); return;
       }
 
       case 'SET_SITE_PROFILE': {
         const state = await syncTabSiteContext(message.tabId, message.siteKey);
-        if (message.enabled) {
-          await enableSiteProfile(message.siteKey, settingsFromState(state));
-        } else {
-          await disableSiteProfile(message.siteKey);
-        }
-        sendResponse({
-          ok: true,
-          state,
-          siteProfileActive: Boolean(message.enabled)
-        });
-        return;
+        if (message.enabled) await enableSiteProfile(message.siteKey, settingsFromState(state));
+        else await disableSiteProfile(message.siteKey);
+        sendResponse({ ok: true, state, siteProfileActive: Boolean(message.enabled) }); return;
       }
 
       case 'SAVE_CUSTOM_PRESET': {
         const name = sanitizePresetName(message.name);
         if (!name) throw new Error('Enter a preset name first.');
-
         const presets = await readCustomPresets();
-        const existingIndex = presets.findIndex(
-          (preset) => preset.name.toLowerCase() === name.toLowerCase()
-        );
+        const existingIndex = presets.findIndex((preset) => preset.name.toLowerCase() === name.toLowerCase());
         const now = Date.now();
         const preset = {
-          id: existingIndex >= 0
-            ? presets[existingIndex].id
-            : `custom-${now}-${Math.random().toString(36).slice(2, 8)}`,
+          id: existingIndex >= 0 ? presets[existingIndex].id : `custom-${now}-${Math.random().toString(36).slice(2, 8)}`,
           name,
           settings: presetSnapshot(message.settings),
           createdAt: existingIndex >= 0 ? presets[existingIndex].createdAt : now,
           updatedAt: now
         };
-
-        if (existingIndex >= 0) {
-          presets.splice(existingIndex, 1, preset);
-        } else {
-          if (presets.length >= MAX_CUSTOM_PRESETS) {
-            throw new Error(`You can save up to ${MAX_CUSTOM_PRESETS} custom presets.`);
-          }
+        if (existingIndex >= 0) presets.splice(existingIndex, 1, preset);
+        else {
+          if (presets.length >= MAX_CUSTOM_PRESETS) throw new Error(`You can save up to ${MAX_CUSTOM_PRESETS} custom presets.`);
           presets.push(preset);
         }
-
         await writeCustomPresets(presets);
-        sendResponse({ ok: true, customPresets: presets, preset });
-        return;
+        sendResponse({ ok: true, customPresets: presets, preset }); return;
       }
 
       case 'DELETE_CUSTOM_PRESET': {
         const presets = await readCustomPresets();
         const next = presets.filter((preset) => preset.id !== message.presetId);
         await writeCustomPresets(next);
-        sendResponse({ ok: true, customPresets: next });
-        return;
+        sendResponse({ ok: true, customPresets: next }); return;
       }
 
       case 'OFFSCREEN_STATUS': {
         if (message.tabId != null) {
           const current = await getSessionState(message.tabId);
-          await writeTabState(
-            message.tabId,
-            {
-              enabled: Boolean(message.enabled),
-              error: message.error ?? null
-            },
-            { persist: false, siteKey: current?.siteKey ?? null }
-          );
+          await writeTabState(message.tabId, { enabled: Boolean(message.enabled), error: message.error ?? null }, { persist: false, siteKey: current?.siteKey ?? null });
         }
-        sendResponse({ ok: true });
-        return;
+        sendResponse({ ok: true }); return;
       }
 
       default:
@@ -446,13 +325,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   try {
     const state = await getSessionState(tabId);
-    if (state?.enabled) {
-      await sendToOffscreen({ type: 'STOP_CAPTURE', tabId });
-    }
+    if (state?.enabled) await sendToOffscreen({ type: 'STOP_CAPTURE', tabId });
     await clearTabState(tabId);
-  } catch (error) {
-    console.warn('[Audio+] tab cleanup failed', error);
-  }
+  } catch (error) { console.warn('[Audio+] tab cleanup failed', error); }
 });
 
 chrome.tabCapture.onStatusChanged.addListener(async (info) => {
@@ -462,14 +337,9 @@ chrome.tabCapture.onStatusChanged.addListener(async (info) => {
       if (!current) return;
       await writeTabState(
         info.tabId,
-        {
-          enabled: false,
-          error: info.status === 'error' ? 'Chrome stopped tab audio capture.' : null
-        },
+        { enabled: false, error: info.status === 'error' ? 'Chrome stopped tab audio capture.' : null },
         { persist: false, siteKey: current.siteKey }
       );
-    } catch (error) {
-      console.warn('[Audio+] capture status sync failed', error);
-    }
+    } catch (error) { console.warn('[Audio+] capture status sync failed', error); }
   }
 });
