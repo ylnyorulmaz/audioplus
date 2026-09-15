@@ -22,8 +22,7 @@ function siteKeyFromUrl(url) {
 }
 
 function formatFrequency(frequency) {
-  if (frequency >= 1000) return `${frequency / 1000}k`;
-  return String(frequency);
+  return frequency >= 1000 ? `${frequency / 1000}k` : String(frequency);
 }
 
 function buildBars() {
@@ -84,8 +83,9 @@ async function refreshState() {
 
 async function pollSpectrum() {
   if (polling || stopped || !activeTab) return;
-  if (document.visibilityState !== 'visible' || !advancedPanel.open || !state?.enabled) {
-    resetSpectrum(state?.enabled ? 'Open Advanced to view the live input spectrum.' : 'Enable Audio+ to view the live input spectrum.');
+  if (document.visibilityState !== 'visible' || !advancedPanel.open) return;
+  if (!state?.enabled) {
+    resetSpectrum('Enable Audio+ to view the live input spectrum.');
     return;
   }
 
@@ -113,7 +113,11 @@ async function loop() {
 }
 
 advancedPanel.addEventListener('toggle', () => {
-  if (advancedPanel.open) refreshState().then(pollSpectrum).catch(console.error);
+  if (advancedPanel.open) {
+    refreshState().then(pollSpectrum).catch(console.error);
+  } else {
+    resetSpectrum(state?.enabled ? 'Open Advanced to view the live input spectrum.' : 'Enable Audio+ to view the live input spectrum.');
+  }
 });
 
 powerButton.addEventListener('click', () => {
