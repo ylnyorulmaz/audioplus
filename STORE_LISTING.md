@@ -1,29 +1,55 @@
-# Chrome Web Store Draft
+# Chrome Web Store Draft — Audio+ V2
 
 ## Short description
 
-Make any browser tab sound better with quick presets, Bass/Mid/Treble controls, a 10-band EQ, per-site profiles, and local audio processing.
+Make browser audio easier to hear with Smart Fix, Dialogue Boost, Night Mode, Karaoke, live spectrum, presets, and a 10-band EQ.
 
 ## Full description
 
-Audio+ gives browser audio a practical control panel without changing your entire system sound.
+Audio+ gives each browser tab a practical audio enhancement toolkit without changing your entire system sound.
 
-Use quick modes such as Bass+, Voice, Movie, Podcast, Bright, or Balanced, or open the Advanced panel for a 10-band equalizer and preamp. Audio+ can remember separate settings for different websites and lets you save your own presets.
+Start with quick listening presets, adjust Bass/Mid/Treble, or open Advanced for a live input spectrum, 10-band EQ, preamp, and Auto Headroom. Audio+ can remember separate settings for different websites and lets you save your own tonal presets.
 
-Audio processing stays on your device. V1 has no backend, account, analytics, or audio upload.
+### Smart Fix
 
-### V1 features
+Press **FIX THIS AUDIO** while audio is playing. Audio+ analyzes a short window of the current tab locally and applies a conservative automatic EQ correction of up to ±3 dB per band. Smart Fix is designed for practical tonal problems such as muddy, thin, or harsh audio. It does not upload audio or call a cloud AI service.
 
+### Dialogue and Night listening
+
+Dialogue Boost reduces some low-mid muddiness and brings speech presence forward. Night Mode offers Light and Strong dynamics profiles for content with large volume jumps.
+
+### Karaoke / Vocal Reduction
+
+Audio+ can reduce centered vocals in many stereo mixes with a lightweight frequency-selective center-reduction technique. Keep Bass helps preserve centered low-frequency material such as kick and bass fundamentals.
+
+Results vary by mix. Audio+ intentionally calls this **Vocal Reduction**, not perfect vocal removal.
+
+### V2 features
+
+- Smart Fix local audio analysis and conservative automatic correction
+- Live 10-band input spectrum
 - Bass / Mid / Treble controls
 - 10-band graphic equalizer
+- Dialogue Boost
+- Night Mode: Off / Light / Strong
+- Vocal Reduction: Light / Karaoke / Instrumental
+- Keep Bass option
 - Master volume up to 150%
-- Auto headroom compensation
-- Peak protection after the master stage
+- Auto Headroom compensation
+- Peak protection
 - Quick listening presets
-- Custom presets
+- Custom tonal presets
 - Per-site profiles
-- Bypass and reset
+- Bypass and Reset
 
-### Important limitations
+## Privacy
 
-Audio+ can improve tonal balance and listening convenience, but it cannot reconstruct information missing from a damaged or heavily compressed source. Some protected playback environments may not support tab capture normally.
+Audio processing, Smart Fix measurements, and live-spectrum measurements stay on the device. Audio+ V2 has no backend, account, analytics, telemetry, or audio upload.
+
+## Important limitations
+
+Audio+ can improve listening convenience and tonal balance, but it is not mastering software and cannot reconstruct information missing from a damaged or heavily compressed source.
+
+Vocal Reduction is stereo DSP rather than AI source separation. Mono, off-center, doubled, or stereo-reverb-heavy vocals may remain, and aggressive reduction can also weaken centered instruments.
+
+Some protected or browser-restricted playback environments may not support normal tab capture.

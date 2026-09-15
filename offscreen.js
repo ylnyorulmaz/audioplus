@@ -120,11 +120,13 @@ async function stopProcessor(tabId, { notify = true } = {}) {
     if (notify) await notifyStatus(tabId, false);
     return;
   }
+
   processors.delete(tabId);
   for (const track of processor.stream.getTracks()) {
     track.onended = null;
     track.stop();
   }
+
   try {
     processor.source.disconnect();
     processor.analyser.disconnect();
@@ -141,6 +143,7 @@ async function stopProcessor(tabId, { notify = true } = {}) {
     processor.masterGain.disconnect();
     processor.peakLimiter.disconnect();
   } catch {}
+
   processor.context.onstatechange = null;
   if (processor.context.state !== 'closed') await processor.context.close();
   if (notify) await notifyStatus(tabId, false);
@@ -174,6 +177,7 @@ function applySettings(processor, incoming) {
   const settings = sanitizeSettings({ ...processor.settings, ...incoming });
   processor.settings = settings;
   const bypass = settings.bypass;
+
   smoothParam(processor.bassMacro.gain, bypass ? 0 : settings.bassDb, processor.context);
   smoothParam(processor.midMacro.gain, bypass ? 0 : settings.midDb, processor.context);
   smoothParam(processor.trebleMacro.gain, bypass ? 0 : settings.trebleDb, processor.context);
@@ -302,12 +306,14 @@ function bandPower(frequencyData, sampleRate, fftSize, lowHz, highHz) {
   const end = Math.min(frequencyData.length - 1, Math.ceil(highHz / binHz));
   let power = 0;
   let count = 0;
+
   for (let index = start; index <= end; index += 1) {
     const db = frequencyData[index];
     if (!Number.isFinite(db)) continue;
     power += 10 ** (db / 10);
     count += 1;
   }
+
   return count > 0 ? power / count : 1e-10;
 }
 
@@ -369,17 +375,62 @@ async function analyzeProcessor(processor) {
   return metrics;
 }
 
+function spectrumBandEdges(index, sampleRate) {
+  const frequency = EQ_FREQUENCIES[index];
+  const previous = EQ_FREQUENCIES[index - 1];
+  const next = EQ_FREQUENCIES[index + 1];
+  const nyquist = sampleRate / 2;
+  const lowHz = index === 0 ? 20 : Math.sqrt(previous * frequency);
+  const highHz = index === EQ_FREQUENCIES.length - 1 ? Math.min(20000, nyquist) : Math.sqrt(frequency * next);
+  return [Math.max(20, lowHz), Math.min(nyquist, highHz)];
+}
+
+function spectrumSnapshot(processor) {
+  const frequencyData = new Float32Array(processor.analyser.frequencyBinCount);
+  const timeData = new Float32Array(processor.analyser.fftSize);
+  processor.analyser.getFloatFrequencyData(frequencyData);
+  processor.analyser.getFloatTimeDomainData(timeData);
+
+  const db = EQ_FREQUENCIES.map((_, index) => {
+    const [lowHz, highHz] = spectrumBandEdges(index, processor.context.sampleRate);
+    return roundMetric(powerToDb(bandPower(frequencyData, processor.context.sampleRate, processor.analyser.fftSize, lowHz, highHz)));
+  });
+  const levels = db.map((value) => Math.max(0, Math.min(1, (value + 85) / 60)));
+
+  let sumSquares = 0;
+  let peak = 0;
+  for (const value of timeData) {
+    sumSquares += value * value;
+    peak = Math.max(peak, Math.abs(value));
+  }
+
+  const rmsDb = roundMetric(10 * Math.log10(Math.max(sumSquares / timeData.length, 1e-10)));
+  const peakDb = roundMetric(20 * Math.log10(Math.max(peak, 1e-6)));
+
+  return {
+    frequencies: [...EQ_FREQUENCIES],
+    db,
+    levels,
+    rmsDb,
+    peakDb,
+    contextState: processor.context.state
+  };
+}
+
 async function startProcessor(tabId, streamId, settings) {
   await stopProcessor(tabId, { notify: false });
   let context;
   let stream;
+
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } },
       video: false
     });
+
     const audioTracks = stream.getAudioTracks();
     if (audioTracks.length === 0) throw new DOMException('No audio track was returned for this tab.', 'NotFoundError');
+
     context = new AudioContext({ latencyHint: 'interactive' });
     if (context.state === 'suspended') await context.resume();
 
@@ -391,11 +442,18 @@ async function startProcessor(tabId, streamId, settings) {
     analyser.smoothingTimeConstant = 0.5;
 
     const bassMacro = context.createBiquadFilter();
-    bassMacro.type = 'lowshelf'; bassMacro.frequency.value = 180;
+    bassMacro.type = 'lowshelf';
+    bassMacro.frequency.value = 180;
+
     const midMacro = context.createBiquadFilter();
-    midMacro.type = 'peaking'; midMacro.frequency.value = 1000; midMacro.Q.value = 0.7;
+    midMacro.type = 'peaking';
+    midMacro.frequency.value = 1000;
+    midMacro.Q.value = 0.7;
+
     const trebleMacro = context.createBiquadFilter();
-    trebleMacro.type = 'highshelf'; trebleMacro.frequency.value = 4500;
+    trebleMacro.type = 'highshelf';
+    trebleMacro.frequency.value = 4500;
+
     const eqFilters = EQ_FREQUENCIES.map((frequency) => createEqFilter(context, frequency));
     const dialogueMudCut = createDialogueFilter(context, 280, 0.9);
     const dialoguePresence = createDialogueFilter(context, 2600, 0.85);
@@ -407,14 +465,25 @@ async function startProcessor(tabId, streamId, settings) {
 
     source.connect(analyser);
     analyser.connect(bassMacro);
-    bassMacro.connect(midMacro); midMacro.connect(trebleMacro);
+    bassMacro.connect(midMacro);
+    midMacro.connect(trebleMacro);
+
     let previous = trebleMacro;
-    for (const filter of eqFilters) { previous.connect(filter); previous = filter; }
+    for (const filter of eqFilters) {
+      previous.connect(filter);
+      previous = filter;
+    }
+
     previous.connect(dialogueMudCut);
     dialogueMudCut.connect(dialoguePresence);
+
     const vocalReducer = createVocalReducer(context, dialoguePresence);
     previous = vocalReducer.output;
-    for (const filter of smartFixFilters) { previous.connect(filter); previous = filter; }
+    for (const filter of smartFixFilters) {
+      previous.connect(filter);
+      previous = filter;
+    }
+
     previous.connect(preampGain);
     preampGain.connect(nightCompressor);
     nightCompressor.connect(masterGain);
@@ -441,17 +510,28 @@ async function startProcessor(tabId, streamId, settings) {
       peakLimiter,
       settings: sanitizeSettings(DEFAULT_SETTINGS)
     };
+
     processors.set(tabId, processor);
     applySettings(processor, settings ?? {});
 
     context.onstatechange = () => {
       if (!processors.has(tabId)) return;
+      if (context.state === 'suspended') {
+        context.resume().catch((error) => console.warn('[Audio+] could not resume AudioContext', error));
+        return;
+      }
       if (context.state === 'closed') {
         processors.delete(tabId);
         notifyStatus(tabId, false, 'The browser audio processor closed unexpectedly.').catch(console.error);
       }
     };
-    for (const track of audioTracks) track.onended = () => { if (processors.get(tabId) === processor) stopProcessor(tabId).catch(console.error); };
+
+    for (const track of audioTracks) {
+      track.onended = () => {
+        if (processors.get(tabId) === processor) stopProcessor(tabId).catch(console.error);
+      };
+    }
+
     await notifyStatus(tabId, true);
     return { ok: true, diagnostics: { sampleRate: context.sampleRate, contextState: context.state, audioTracks: audioTracks.length } };
   } catch (error) {
@@ -465,15 +545,26 @@ async function startProcessor(tabId, streamId, settings) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.target !== 'offscreen') return;
+
   (async () => {
     switch (message.type) {
-      case 'START_CAPTURE': sendResponse(await startProcessor(message.tabId, message.streamId, message.settings)); return;
-      case 'STOP_CAPTURE': await stopProcessor(message.tabId); sendResponse({ ok: true }); return;
+      case 'START_CAPTURE':
+        sendResponse(await startProcessor(message.tabId, message.streamId, message.settings));
+        return;
+
+      case 'STOP_CAPTURE':
+        await stopProcessor(message.tabId);
+        sendResponse({ ok: true });
+        return;
+
       case 'APPLY_SETTINGS': {
         const processor = processors.get(message.tabId);
         if (!processor) throw new Error('No active processor for this tab.');
-        applySettings(processor, message.settings ?? {}); sendResponse({ ok: true }); return;
+        applySettings(processor, message.settings ?? {});
+        sendResponse({ ok: true });
+        return;
       }
+
       case 'ANALYZE_AUDIO': {
         const processor = processors.get(message.tabId);
         if (!processor) throw new Error('Enable Audio+ before running Smart Fix.');
@@ -481,9 +572,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: true, metrics });
         return;
       }
+
+      case 'GET_SPECTRUM': {
+        const processor = processors.get(message.tabId);
+        if (!processor) {
+          sendResponse({ ok: true, active: false });
+          return;
+        }
+        sendResponse({ ok: true, active: true, spectrum: spectrumSnapshot(processor) });
+        return;
+      }
+
       case 'GET_PROCESSOR_DIAGNOSTICS': {
         const processor = processors.get(message.tabId);
-        if (!processor) { sendResponse({ ok: true, active: false }); return; }
+        if (!processor) {
+          sendResponse({ ok: true, active: false });
+          return;
+        }
         sendResponse({
           ok: true,
           active: true,
@@ -500,8 +605,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         return;
       }
-      default: sendResponse({ ok: false, error: `Unknown offscreen message type: ${message.type}` });
+
+      default:
+        sendResponse({ ok: false, error: `Unknown offscreen message type: ${message.type}` });
     }
-  })().catch((error) => { console.error('[Audio+] offscreen error', error); sendResponse({ ok: false, error: error?.message ?? String(error) }); });
+  })().catch((error) => {
+    console.error('[Audio+] offscreen error', error);
+    sendResponse({ ok: false, error: error?.message ?? String(error) });
+  });
+
   return true;
 });

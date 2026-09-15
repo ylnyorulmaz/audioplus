@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Audio+",
-  "version": "0.7.0",
-  "description": "Make browser audio easier to hear with Smart Fix, EQ, Dialogue Boost, Night Mode, Vocal Reduction, presets, and local processing.",
+  "version": "0.8.0",
+  "description": "Make browser audio easier to hear with Smart Fix, live spectrum, EQ, Dialogue Boost, Night Mode, Vocal Reduction, presets, and local processing.",
   "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",

@@ -8,7 +8,7 @@ import { buildSmartFix, scoreSmartFixMetrics } from '../smart-fix.js';
 
 test('10-band EQ frequencies stay stable', () => assert.deepEqual(EQ_FREQUENCIES, [32,64,125,250,500,1000,2000,4000,8000,16000]));
 
-test('settings clamp unsafe input including V2.3 Smart Fix controls', () => {
+test('settings clamp unsafe input including Smart Fix controls', () => {
   const safe = sanitizeSettings({
     bassDb:99, midDb:-99, preampDb:99, volume:999, dialogueBoost:999, nightMode:'nonsense',
     vocalReduction:999, keepBass:0, smartFixEnabled:1, smartFixBands:Array(10).fill(99), eqBands:Array(10).fill(99)
@@ -19,7 +19,7 @@ test('settings clamp unsafe input including V2.3 Smart Fix controls', () => {
   assert.ok(safe.eqBands.every((value)=>value===12));
 });
 
-test('V2.3 defaults keep Smart Fix and vocal reduction neutral', () => {
+test('defaults keep Smart Fix and vocal reduction neutral', () => {
   const safe = sanitizeSettings(DEFAULT_SETTINGS);
   assert.equal(safe.vocalReduction,0);
   assert.equal(safe.keepBass,true);
@@ -53,7 +53,10 @@ test('built-in presets remain tonal snapshots and never store volume or Smart Fi
   }
 });
 
-test('preset names are normalized and capped', () => { assert.equal(sanitizePresetName('  My   Speakers  '),'My Speakers'); assert.equal(sanitizePresetName('x'.repeat(100)).length,40); });
+test('preset names are normalized and capped', () => {
+  assert.equal(sanitizePresetName('  My   Speakers  '),'My Speakers');
+  assert.equal(sanitizePresetName('x'.repeat(100)).length,40);
+});
 
 test('Smart Fix scores muddy audio and cuts low mids conservatively', () => {
   const metrics={ bassDb:-31, lowMidDb:-20, midDb:-28, presenceDb:-32, highDb:-36, rmsDb:-18 };
@@ -76,21 +79,34 @@ test('Smart Fix can recognize thin and harsh profiles', () => {
   assert.ok(harsh.bands[8] < 0);
 });
 
-test('manifest is MV3 V2.3 release 0.7.0 with minimum permissions', async () => {
+test('manifest is MV3 V2 final release 0.8.0 with minimum permissions', async () => {
   const manifest=JSON.parse(await readFile(new URL('../manifest.json',import.meta.url),'utf8'));
-  assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.7.0');
-  assert.deepEqual([...manifest.permissions].sort(),['activeTab','offscreen','storage','tabCapture'].sort()); assert.equal(manifest.host_permissions,undefined);
+  assert.equal(manifest.manifest_version,3);
+  assert.equal(manifest.version,'0.8.0');
+  assert.deepEqual([...manifest.permissions].sort(),['activeTab','offscreen','storage','tabCapture'].sort());
+  assert.equal(manifest.host_permissions,undefined);
+  assert.equal(manifest.background.service_worker,'background.js');
+});
+
+test('package version matches manifest V2 final version', async () => {
+  const manifest=JSON.parse(await readFile(new URL('../manifest.json',import.meta.url),'utf8'));
+  const pkg=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
+  assert.equal(pkg.version,manifest.version);
 });
 
 test('peak protection remains after master gain', async () => {
   const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
-  assert.match(source,/masterGain\.connect\(peakLimiter\)/); assert.match(source,/peakLimiter\.connect\(context\.destination\)/); assert.match(source,/ratio:\s*20/);
+  assert.match(source,/masterGain\.connect\(peakLimiter\)/);
+  assert.match(source,/peakLimiter\.connect\(context\.destination\)/);
+  assert.match(source,/ratio:\s*20/);
 });
 
-test('V2.1 graph still includes dialogue filters and night compressor before master', async () => {
+test('V2.1 dialogue and Night Mode graph remains intact', async () => {
   const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
-  assert.match(source,/createDialogueFilter\(context, 280/); assert.match(source,/createDialogueFilter\(context, 2600/);
-  assert.match(source,/preampGain\.connect\(nightCompressor\)/); assert.match(source,/nightCompressor\.connect\(masterGain\)/);
+  assert.match(source,/createDialogueFilter\(context, 280/);
+  assert.match(source,/createDialogueFilter\(context, 2600/);
+  assert.match(source,/preampGain\.connect\(nightCompressor\)/);
+  assert.match(source,/nightCompressor\.connect\(masterGain\)/);
 });
 
 test('V2.2.1 karaoke keeps frequency-selective center reduction', async () => {
@@ -102,7 +118,7 @@ test('V2.2.1 karaoke keeps frequency-selective center reduction', async () => {
   assert.match(source,/settings\.keepBass \? 0 : aggressive \* 0\.28/);
 });
 
-test('V2.3 graph analyzes dry input and inserts a separate Smart Fix EQ layer', async () => {
+test('Smart Fix graph analyzes dry input and inserts a separate correction layer', async () => {
   const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
   assert.match(source,/const analyser = context\.createAnalyser\(\)/);
   assert.match(source,/source\.connect\(analyser\)/);
@@ -113,17 +129,44 @@ test('V2.3 graph analyzes dry input and inserts a separate Smart Fix EQ layer', 
   assert.match(source,/case 'ANALYZE_AUDIO'/);
 });
 
-test('V2.3 background exposes run and clear Smart Fix commands', async () => {
-  const source=await readFile(new URL('../background.js',import.meta.url),'utf8');
-  assert.match(source,/case 'RUN_SMART_FIX'/);
-  assert.match(source,/buildSmartFix\(analysis\.metrics\)/);
-  assert.match(source,/case 'CLEAR_SMART_FIX'/);
-  assert.match(source,/smartFixEnabled: false/);
+test('V2.4 exposes low-overhead spectrum snapshots from the existing analyser', async () => {
+  const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
+  assert.match(source,/function spectrumSnapshot\(processor\)/);
+  assert.match(source,/case 'GET_SPECTRUM'/);
+  assert.match(source,/frequencies: \[\.\.\.EQ_FREQUENCIES\]/);
+  assert.equal((source.match(/context\.createAnalyser\(\)/g) ?? []).length,1);
 });
 
-test('V2.3 popup exposes Smart Fix controls', async () => {
+test('V2.4 resumes a suspended AudioContext and keeps cleanup paths', async () => {
+  const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
+  assert.match(source,/context\.state === 'suspended'/);
+  assert.match(source,/context\.resume\(\)/);
+  assert.match(source,/processor\.analyser\.disconnect\(\)/);
+  assert.match(source,/track\.onended = null/);
+});
+
+test('V2.4 background prevents overlapping Smart Fix runs and syncs hostname navigation', async () => {
+  const source=await readFile(new URL('../background.js',import.meta.url),'utf8');
+  assert.match(source,/const smartFixRuns = new Set\(\)/);
+  assert.match(source,/smartFixRuns\.has\(message\.tabId\)/);
+  assert.match(source,/smartFixRuns\.delete\(message\.tabId\)/);
+  assert.match(source,/chrome\.tabs\.onUpdated\.addListener/);
+  assert.match(source,/siteKeyFromUrl\(changeInfo\.url\)/);
+  assert.match(source,/syncTabSiteContext\(tabId, siteKey\)/);
+});
+
+test('V2.4 popup exposes live spectrum controls and productization script', async () => {
   const html=await readFile(new URL('../popup.html',import.meta.url),'utf8');
-  assert.match(html,/id="smartFixButton"/);
-  assert.match(html,/id="clearSmartFixButton"/);
-  assert.match(html,/src="v2-smart-fix\.js"/);
+  assert.match(html,/id="spectrumBars"/);
+  assert.match(html,/id="spectrumStatus"/);
+  assert.match(html,/id="spectrumMetrics"/);
+  assert.match(html,/src="v2-productization\.js"/);
+});
+
+test('V2.4 spectrum polling only runs when popup is visible and Advanced is open', async () => {
+  const source=await readFile(new URL('../v2-productization.js',import.meta.url),'utf8');
+  assert.match(source,/const POLL_MS = 240/);
+  assert.match(source,/document\.visibilityState !== 'visible'/);
+  assert.match(source,/!advancedPanel\.open/);
+  assert.match(source,/type: 'GET_SPECTRUM'/);
 });
