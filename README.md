@@ -2,37 +2,43 @@
 
 Audio+ is a local-first Chrome audio enhancement extension. It captures only the tab the user explicitly enables and processes its audio on-device with the Web Audio API.
 
-Current version: **V2.1 / 0.5.0**.
+Current version: **V2.2 / 0.6.0**.
 
-## V2.1 features
+## V2.2 features
 
-Everything from V1 remains available:
+Everything from V2.1 remains available: EQ, presets, custom presets, per-site profiles, Dialogue Boost, Night Mode, volume, bypass, auto headroom, and peak protection.
 
-- Bass / Mid / Treble controls
-- 10-band graphic EQ
-- preamp and auto headroom
-- master volume up to 150%
-- peak protection
-- quick listening presets
-- custom presets
-- per-site profiles
-- bypass and reset
+V2.2 adds **Vocal Reduction / Karaoke**.
 
-V2.1 adds two practical enhancement tools:
+### Vocal Reduction
 
-### Dialogue Boost
+Vocal Reduction uses lightweight stereo center attenuation. It does not download an AI model and does not upload audio.
 
-A 0-100% control that combines a gentle low-mid cut around 280 Hz with a presence lift around 2.6 kHz. At 100%, the current curve is approximately -2 dB low-mid and +3 dB presence. Auto headroom includes the dialogue presence boost in its compensation estimate.
+The 0-100% control progressively attenuates content common to the left and right channels while preserving stereo side information. Three shortcuts are included:
 
-### Night Mode
+- **Light** — 35%
+- **Karaoke** — 70%
+- **Instrumental** — 100%
 
-Three dynamics modes:
+This works best when the lead vocal is mixed near the stereo center. It is intentionally called Vocal Reduction rather than Vocal Removal because results vary by recording.
 
-- **Off** — neutral 1:1 dynamics stage
-- **Light** — moderate compression for everyday evening viewing
-- **Strong** — stronger compression for large dialogue/action level differences
+### Keep Bass
 
-Night Mode runs before master volume and the existing peak-protection stage. It is intentionally separate from the limiter: Night Mode changes listening dynamics; peak protection remains a safety stage.
+Center attenuation can also weaken centered kick and bass. **Keep Bass** preserves the original low-frequency region below roughly 180 Hz while applying vocal reduction mainly above that crossover.
+
+Keep Bass is enabled by default.
+
+## Important karaoke limitations
+
+V2.2 is DSP, not stem separation. Results can be weak when:
+
+- the source is mono;
+- the vocal is panned away from center;
+- the vocal has wide stereo doubling, delay, or reverb;
+- instruments share the same centered frequency content;
+- the mix already contains phase-processing or unusual stereo mastering.
+
+At aggressive settings, some centered drums, bass harmonics, or instruments may still be reduced.
 
 ## Audio graph
 
@@ -40,8 +46,9 @@ Night Mode runs before master volume and the existing peak-protection stage. It 
 Tab capture
   -> Bass / Mid / Treble
   -> 10-band EQ
-  -> Dialogue low-mid cut
-  -> Dialogue presence
+  -> Dialogue shaping
+  -> Stereo Vocal Reduction
+       -> optional bass-preservation crossover
   -> Preamp + auto headroom
   -> Night Mode compressor
   -> Master volume
@@ -49,17 +56,13 @@ Tab capture
   -> Output
 ```
 
-Bypass neutralizes EQ/tone/dialogue gain, preamp/master changes, Night Mode compression, and peak-protection ratio for a cleaner original/processed comparison.
+Bypass neutralizes EQ, Dialogue Boost, Vocal Reduction, Night Mode, gain changes, and limiter ratio for a cleaner original/processed comparison.
 
 ## Persistence
 
-Dialogue Boost and Night Mode are normal Audio+ settings, so they participate in global settings and per-site profiles. Reset returns both to Off/0 along with the V1 controls.
-
-Built-in and custom tonal presets intentionally remain focused on EQ/tone; applying Bass+, Voice, Movie, etc. does not unexpectedly switch Night Mode.
+Vocal Reduction and Keep Bass are normal Audio+ settings. They persist globally and inside per-site profiles. Reset returns Vocal Reduction to 0% and Keep Bass to On.
 
 ## Run locally
-
-There is no build step.
 
 ```bash
 npm test
@@ -67,27 +70,24 @@ npm test
 
 Then open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, select this repository, play media in a normal tab, and click **Enable Audio+**.
 
-## V2.1 manual acceptance test
+## V2.2 manual acceptance test
 
-- Dialogue Boost is clearly audible on speech without extreme coloration.
-- 0% Dialogue Boost is neutral.
-- Night Off is neutral; Light and Strong progressively reduce large level jumps.
-- Night Mode does not replace or disable peak protection.
-- Bypass approximately restores original tone, level, and dynamics.
-- Dialogue/Night settings persist globally and in site profiles.
-- Reset returns Dialogue Boost to 0% and Night Mode to Off.
-- V1 EQ, presets, profiles, volume, capture lifecycle, and limiter still work.
-- Test long playback and same-tab navigation on YouTube, YouTube Music, and Spotify Web.
+- 0% Vocal Reduction sounds neutral.
+- Light, Karaoke, and Instrumental progressively reduce a centered lead vocal.
+- Keep Bass On retains noticeably more kick/bass than Keep Bass Off on suitable material.
+- Mono content does not crash the processor, even if the effect is limited.
+- Bypass restores approximately original stereo balance and level.
+- Vocal settings persist globally and in site profiles.
+- Reset restores Vocal Reduction 0% and Keep Bass On.
+- Dialogue Boost, Night Mode, V1 EQ, profiles, capture lifecycle, and limiter still work.
 
 ## Privacy
 
-Audio stays on the device. V2.1 adds no backend, analytics, account, remote code, or audio upload. See [PRIVACY.md](PRIVACY.md).
+Audio stays on the device. V2.2 adds no backend, analytics, account, remote code, model download, or audio upload. See [PRIVACY.md](PRIVACY.md).
 
-## Not in V2.1
+## Next
 
-- Vocal Reduction / Karaoke
-- Smart Fix / automatic audio analysis
-- AI stem separation
+V2.3 is planned around **Smart Fix / automatic audio analysis**. AI stem separation remains outside this lightweight V2.2 karaoke implementation.
 
 ## License
 

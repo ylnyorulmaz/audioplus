@@ -11,6 +11,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   volume: 100,
   dialogueBoost: 0,
   nightMode: 'off',
+  vocalReduction: 0,
+  keepBass: true,
   bypass: false
 });
 
@@ -37,6 +39,8 @@ export function sanitizeSettings(input = {}) {
     volume: clamp(input.volume ?? DEFAULT_SETTINGS.volume, 0, 150),
     dialogueBoost: clamp(input.dialogueBoost ?? DEFAULT_SETTINGS.dialogueBoost, 0, 100),
     nightMode: sanitizeNightMode(input.nightMode),
+    vocalReduction: clamp(input.vocalReduction ?? DEFAULT_SETTINGS.vocalReduction, 0, 100),
+    keepBass: Boolean(input.keepBass ?? DEFAULT_SETTINGS.keepBass),
     bypass: Boolean(input.bypass ?? DEFAULT_SETTINGS.bypass)
   };
 }
