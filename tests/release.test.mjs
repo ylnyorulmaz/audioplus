@@ -34,9 +34,9 @@ test('built-in presets remain tonal snapshots and never store volume', () => {
 
 test('preset names are normalized and capped', () => { assert.equal(sanitizePresetName('  My   Speakers  '),'My Speakers'); assert.equal(sanitizePresetName('x'.repeat(100)).length,40); });
 
-test('manifest is MV3 V2.2 release 0.6.0 with minimum permissions', async () => {
+test('manifest is MV3 V2.2.1 release 0.6.1 with minimum permissions', async () => {
   const manifest=JSON.parse(await readFile(new URL('../manifest.json',import.meta.url),'utf8'));
-  assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.6.0');
+  assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.6.1');
   assert.deepEqual([...manifest.permissions].sort(),['activeTab','offscreen','storage','tabCapture'].sort()); assert.equal(manifest.host_permissions,undefined);
 });
 
@@ -51,12 +51,21 @@ test('V2.1 graph still includes dialogue filters and night compressor before mas
   assert.match(source,/preampGain\.connect\(nightCompressor\)/); assert.match(source,/nightCompressor\.connect\(masterGain\)/);
 });
 
-test('V2.2 graph contains stereo center attenuation and bass preservation crossover', async () => {
+test('V2.2.1 karaoke uses frequency-selective center reduction', async () => {
   const source=await readFile(new URL('../offscreen.js',import.meta.url),'utf8');
-  assert.match(source,/createChannelSplitter\(2\)/);
-  assert.match(source,/createChannelMerger\(2\)/);
-  assert.match(source,/crossCoefficient = -amount \/ 2/);
-  assert.match(source,/VOCAL_CROSSOVER_HZ = 180/);
-  assert.match(source,/originalLowpass\.connect\(bassPreserveGain\)/);
+  assert.match(source,/VOCAL_LOW_CROSSOVER_HZ = 180/);
+  assert.match(source,/VOCAL_HIGH_CROSSOVER_HZ = 6500/);
+  assert.match(source,/const midAmount = aggressive/);
+  assert.match(source,/const highAmount = aggressive \* 0\.42/);
+  assert.match(source,/settings\.keepBass \? 0 : aggressive \* 0\.28/);
+  assert.match(source,/createStereoCenterReducer\(context\)/);
+  assert.match(source,/midHighpass\.connect\(midLowpass\)/);
   assert.match(source,/vocalReducer\.output\.connect\(preampGain\)/);
+});
+
+test('V2.2.1 UI exposes stronger karaoke shortcuts', async () => {
+  const html=await readFile(new URL('../popup.html',import.meta.url),'utf8');
+  assert.match(html,/data-vocal-preset="45"/);
+  assert.match(html,/data-vocal-preset="82"/);
+  assert.match(html,/data-vocal-preset="100"/);
 });
