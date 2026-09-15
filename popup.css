@@ -11,7 +11,9 @@
 
 body {
   margin: 0;
-  min-width: 330px;
+  min-width: 360px;
+  max-height: 600px;
+  overflow-y: auto;
   background: #111318;
 }
 
@@ -21,7 +23,7 @@ input {
 }
 
 .panel {
-  width: 330px;
+  width: 360px;
   padding: 18px;
 }
 
@@ -40,7 +42,7 @@ input {
 }
 
 .site {
-  max-width: 230px;
+  max-width: 250px;
   margin-top: 4px;
   overflow: hidden;
   color: #9ea6b5;
@@ -89,25 +91,43 @@ input {
   opacity: 0.55;
 }
 
-.control-group {
-  margin-top: 20px;
+.section,
+.advanced {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #272d36;
+}
+
+.section-title {
+  margin-bottom: 12px;
+  color: #aeb6c4;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.control-group + .control-group {
+  margin-top: 14px;
 }
 
 .control-heading,
-.range-labels,
-.actions {
+.actions,
+.toggle-row,
+.eq-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
 .control-heading {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   font-size: 13px;
   font-weight: 650;
 }
 
-.control-heading output {
+.control-heading output,
+.eq-row output {
   color: #c8cfda;
   font-variant-numeric: tabular-nums;
 }
@@ -117,10 +137,71 @@ input[type="range"] {
   accent-color: #f5f7fb;
 }
 
-.range-labels {
-  margin-top: 4px;
-  color: #737c8d;
+.advanced summary {
+  display: flex;
+  justify-content: space-between;
+  cursor: pointer;
+  color: #e8ecf2;
+  font-size: 13px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced summary span {
+  color: #747e8e;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.eq-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.eq-row {
+  display: grid;
+  grid-template-columns: 42px 1fr 54px;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.eq-row label {
+  color: #aeb6c4;
+  font-variant-numeric: tabular-nums;
+}
+
+.eq-row output {
+  text-align: right;
+}
+
+.toggle-row {
+  gap: 14px;
+  margin-top: 15px;
+  cursor: pointer;
+}
+
+.toggle-row span {
+  display: grid;
+  gap: 3px;
+}
+
+.toggle-row strong {
+  font-size: 12px;
+}
+
+.toggle-row small {
+  color: #7e8796;
   font-size: 10px;
+}
+
+.toggle-row input {
+  width: 18px;
+  height: 18px;
 }
 
 .actions {
