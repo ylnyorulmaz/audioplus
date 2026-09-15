@@ -11,6 +11,7 @@ const MAX_CUSTOM_PRESETS = 12;
 const SETTING_KEYS = new Set(Object.keys(DEFAULT_SETTINGS));
 
 let creatingOffscreen = null;
+const smartFixRuns = new Set();
 
 async function ensureOffscreenDocument() {
   const offscreenUrl = chrome.runtime.getURL(OFFSCREEN_PATH);
@@ -33,6 +34,15 @@ function normalizeSiteKey(value) {
   if (!siteKey || siteKey.length > 253) return null;
   if (!/^[a-z0-9.-]+$/.test(siteKey)) return null;
   return siteKey;
+}
+
+function siteKeyFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:'].includes(parsed.protocol) ? normalizeSiteKey(parsed.hostname) : null;
+  } catch {
+    return null;
+  }
 }
 
 function settingsFromState(state) { return sanitizeSettings(state); }
@@ -145,13 +155,16 @@ async function syncTabSiteContext(tabId, siteKey) {
   const current = await getSessionState(tabId);
   if (!current) return readTabState(tabId, normalized);
   if (!normalized || current.siteKey === normalized) return current;
+
   const settings = await readPersistentSettings(normalized);
   const next = { ...settings, enabled: Boolean(current.enabled), error: current.error ?? null, siteKey: normalized, smartFixResult: null };
   await setSessionState(tabId, next);
+
   if (next.enabled) {
     const result = await sendToOffscreen({ type: 'APPLY_SETTINGS', tabId, settings: settingsFromState(next) });
     if (!result?.ok) throw new Error(result?.error ?? 'Could not switch site audio profile.');
   }
+
   return next;
 }
 
@@ -227,20 +240,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       case 'RUN_SMART_FIX': {
-        const current = await syncTabSiteContext(message.tabId, message.siteKey);
-        if (!current.enabled) throw new Error('Enable Audio+ and play audio before running Smart Fix.');
-        const analysis = await sendToOffscreen({ type: 'ANALYZE_AUDIO', tabId: message.tabId });
-        if (!analysis?.ok) throw new Error(analysis?.error ?? 'Could not analyze this audio.');
-        const fix = buildSmartFix(analysis.metrics);
-        const resultSummary = { summary: fix.summary, scores: fix.scores, issues: fix.issues, metrics: analysis.metrics, bands: fix.bands };
-        const next = await writeTabState(
-          message.tabId,
-          { smartFixEnabled: true, smartFixBands: fix.bands, smartFixResult: resultSummary },
-          { persist: true, siteKey: message.siteKey }
-        );
-        const applied = await sendToOffscreen({ type: 'APPLY_SETTINGS', tabId: message.tabId, settings: settingsFromState(next) });
-        if (!applied?.ok) throw new Error(applied?.error ?? 'Could not apply Smart Fix.');
-        sendResponse({ ok: true, state: next, smartFixResult: resultSummary }); return;
+        if (smartFixRuns.has(message.tabId)) throw new Error('Smart Fix is already analyzing this tab.');
+        smartFixRuns.add(message.tabId);
+        try {
+          const current = await syncTabSiteContext(message.tabId, message.siteKey);
+          if (!current.enabled) throw new Error('Enable Audio+ and play audio before running Smart Fix.');
+          const analysis = await sendToOffscreen({ type: 'ANALYZE_AUDIO', tabId: message.tabId });
+          if (!analysis?.ok) throw new Error(analysis?.error ?? 'Could not analyze this audio.');
+          const fix = buildSmartFix(analysis.metrics);
+          const resultSummary = { summary: fix.summary, scores: fix.scores, issues: fix.issues, metrics: analysis.metrics, bands: fix.bands };
+          const next = await writeTabState(
+            message.tabId,
+            { smartFixEnabled: true, smartFixBands: fix.bands, smartFixResult: resultSummary },
+            { persist: true, siteKey: message.siteKey }
+          );
+          const applied = await sendToOffscreen({ type: 'APPLY_SETTINGS', tabId: message.tabId, settings: settingsFromState(next) });
+          if (!applied?.ok) throw new Error(applied?.error ?? 'Could not apply Smart Fix.');
+          sendResponse({ ok: true, state: next, smartFixResult: resultSummary });
+        } finally {
+          smartFixRuns.delete(message.tabId);
+        }
+        return;
       }
 
       case 'CLEAR_SMART_FIX': {
@@ -322,7 +342,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+  if (!changeInfo.url) return;
+  const siteKey = siteKeyFromUrl(changeInfo.url);
+  if (!siteKey) return;
+
+  try {
+    await syncTabSiteContext(tabId, siteKey);
+  } catch (error) {
+    console.warn('[Audio+] navigation profile sync failed', error);
+    const current = await getSessionState(tabId);
+    if (current?.enabled && /No active processor/.test(error?.message ?? '')) {
+      await writeTabState(tabId, { enabled: false, error: 'Audio processing stopped during navigation. Enable Audio+ again.' }, { persist: false, siteKey });
+    }
+  }
+});
+
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  smartFixRuns.delete(tabId);
   try {
     const state = await getSessionState(tabId);
     if (state?.enabled) await sendToOffscreen({ type: 'STOP_CAPTURE', tabId });
