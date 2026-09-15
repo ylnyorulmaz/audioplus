@@ -31,6 +31,21 @@
       </div>
     </section>
 
+    <section class="section" aria-labelledby="karaokeHeading">
+      <div class="section-title" id="karaokeHeading">Karaoke</div>
+      <div class="karaoke-presets segmented" role="group" aria-label="Vocal Reduction modes">
+        <button type="button" data-vocal-preset="35" aria-pressed="false">Light</button>
+        <button type="button" data-vocal-preset="70" aria-pressed="false">Karaoke</button>
+        <button type="button" data-vocal-preset="100" aria-pressed="false">Instrumental</button>
+      </div>
+      <div class="control-group compact karaoke-control">
+        <div class="control-heading"><label for="vocalReductionSlider">Vocal Reduction</label><output id="vocalReductionValue" for="vocalReductionSlider">0%</output></div>
+        <input id="vocalReductionSlider" type="range" min="0" max="100" step="5" value="0" />
+        <p class="control-note">Reduces centered vocals in stereo mixes. Results vary by track.</p>
+      </div>
+      <label class="toggle-row karaoke-bass" for="keepBassToggle"><span><strong>Keep Bass</strong><small>Preserves low-frequency center content such as kick and bass.</small></span><input id="keepBassToggle" type="checkbox" checked /></label>
+    </section>
+
     <section class="section" aria-labelledby="toneHeading"><div class="section-title" id="toneHeading">Tone</div>
       <div class="control-group compact"><div class="control-heading"><label for="bassSlider">Bass</label><output id="bassValue" for="bassSlider">0 dB</output></div><input id="bassSlider" type="range" min="-12" max="12" step="0.5" value="0" /></div>
       <div class="control-group compact"><div class="control-heading"><label for="midSlider">Mid</label><output id="midValue" for="midSlider">0 dB</output></div><input id="midSlider" type="range" min="-12" max="12" step="0.5" value="0" /></div>
