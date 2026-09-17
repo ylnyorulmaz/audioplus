@@ -20,6 +20,7 @@ jobs:
       - name: Verify packaged AI runtime assets
         run: |
           test -f dist/ai-karaoke-lab.js
+          test -f dist/live-ai-worker.js
           test -f vendor/ort/ort-wasm-simd-threaded.jsep.wasm
       - name: Run release tests
         run: npm test
@@ -28,3 +29,4 @@ jobs:
           find . -maxdepth 1 -type f -name '*.js' -print0 | xargs -0 -n1 node --check
           find scripts tests -type f \( -name '*.js' -o -name '*.mjs' \) -print0 | xargs -0 -n1 node --check
           node --check dist/ai-karaoke-lab.js
+          node --check dist/live-ai-worker.js
