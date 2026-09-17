@@ -1,4 +1,5 @@
 import { sanitizeSettings } from './audio-settings.js';
+import { LIVE_AI_ERROR_CODES, liveAiError, liveAiStatusFromError } from './live-ai-errors.js';
 
 const OFFSCREEN_PATH = 'offscreen.html';
 const STATE_PREFIX = 'audioPlus.tab.';
@@ -16,7 +17,7 @@ async function ensureOffscreenDocument() {
     creatingOffscreen = chrome.offscreen.createDocument({
       url: OFFSCREEN_PATH,
       reasons: ['USER_MEDIA', 'AUDIO_PLAYBACK'],
-      justification: 'Run bounded local AI Karaoke capture and playback for a user-selected tab.'
+      justification: 'Run bounded local AI Karaoke on the already captured user-selected tab audio.'
     }).finally(() => { creatingOffscreen = null; });
   }
   await creatingOffscreen;
@@ -35,7 +36,7 @@ function stateLooksLive(value) {
 async function stopLive(tabId, reason = 'user') {
   await ensureOffscreenDocument();
   await chrome.runtime.sendMessage({ target: 'live-offscreen', type: 'STOP_LIVE_AI', tabId, reason });
-  await writeLiveState(tabId, { active: false, phase: 'off', quality: 'off', reason: null, stoppedBy: reason });
+  await writeLiveState(tabId, { active: false, phase: 'off', quality: 'off', reason: null, stoppedBy: reason, errorCode: null, action: null });
 }
 
 async function stopOtherLiveTabs(nextTabId) {
@@ -53,7 +54,14 @@ async function stopOtherLiveTabs(nextTabId) {
 async function startLive(tabId) {
   const tabKey = tabStateKey(tabId);
   const state = (await chrome.storage.session.get(tabKey))[tabKey];
-  if (!state?.enabled) throw new Error('Enable Audio+ on this tab before starting Live AI Karaoke.');
+  if (!state?.enabled) {
+    throw liveAiError(
+      LIVE_AI_ERROR_CODES.BASE_NOT_ENABLED,
+      'Audio+ is not enabled for this tab yet.',
+      'Enable Audio+ first, then start AI Karaoke.'
+    );
+  }
+
   await ensureOffscreenDocument();
   const stoppedTabs = await stopOtherLiveTabs(tabId);
   await writeLiveState(tabId, {
@@ -62,15 +70,28 @@ async function startLive(tabId) {
     quality: 'warming',
     reason: null,
     rtf: null,
+    errorCode: null,
+    action: null,
     tookOverFromAnotherTab: stoppedTabs.length > 0
   });
+
+  // Important: do NOT request another tabCapture stream here.
+  // The live AI offscreen host clones the already active base Audio+ stream.
   const response = await chrome.runtime.sendMessage({
     target: 'live-offscreen',
     type: 'START_LIVE_AI',
     tabId,
     originalSettings: sanitizeSettings(state)
   });
-  if (!response?.ok) throw new Error(response?.error ?? 'Could not start Live AI Karaoke.');
+
+  if (!response?.ok) {
+    const error = liveAiError(
+      response?.errorCode ?? LIVE_AI_ERROR_CODES.UNKNOWN,
+      response?.error ?? 'Could not start Live AI Karaoke.',
+      response?.action ?? 'Keep normal Audio+ enabled and try again.'
+    );
+    throw error;
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -80,14 +101,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true, accepted: true });
     startLive(message.tabId).catch(async (error) => {
       console.error('[Audio+] live AI start failed', error);
-      await writeLiveState(message.tabId, { active: false, phase: 'error', quality: 'fallback', reason: error?.message ?? String(error) });
+      await writeLiveState(message.tabId, liveAiStatusFromError(error));
     });
     return;
   }
 
   if (message.type === 'STOP_LIVE_AI_REQUEST') {
     sendResponse({ ok: true, accepted: true });
-    stopLive(message.tabId).catch((error) => console.error('[Audio+] live AI stop failed', error));
+    stopLive(message.tabId).catch(async (error) => {
+      console.error('[Audio+] live AI stop failed', error);
+      await writeLiveState(message.tabId, liveAiStatusFromError(error)).catch(() => {});
+    });
     return;
   }
 
