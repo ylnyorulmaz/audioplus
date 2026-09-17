@@ -7,7 +7,7 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 test('service worker composes audio bridges and opens a persistent control window', async () => {
   const text=await read('service-worker.js');
   assert.match(text,/^import '\.\/live-ai-background\.js';\nimport '\.\/background\.js';/);
-  assert.match(text,/chrome\.action\.onClicked/); assert.match(text,/chrome\.windows\.create/); assert.match(text,/type: 'popup'/); assert.match(text,/popup\.html\?tabId=/);
+  assert.match(text,/chrome\.action\.onClicked/); assert.match(text,/chrome\.windows\.create/); assert.match(text,/type: 'popup'/); assert.match(text,/\?tabId=\$\{encodeURIComponent\(tabId\)\}/);
 });
 
 test('target resolver keeps persistent window bound to the original browser tab', async () => {
@@ -47,8 +47,9 @@ test('popup has explicit AI off path and Fast Karaoke Off control', async () => 
   assert.match(html,/id="liveAiButton"/); assert.match(html,/data-vocal-preset="0"[^>]*>Off</); assert.match(live,/STOP_LIVE_AI_REQUEST/); assert.match(live,/Turn AI Karaoke Off/);
 });
 
-test('offscreen host uses separate 44.1 kHz capture and restores base audio', async () => {
+test('offscreen host preflights packaged worker and restores base audio', async () => {
   const text=await read('live-ai-offscreen.js');
+  assert.match(text,/assertLiveRuntimePackaged/); assert.match(text,/dist\/live-ai-worker\.js/); assert.match(text,/npm install && npm run build/);
   assert.match(text,/chromeMediaSource: 'tab'/); assert.match(text,/target: 'offscreen', type: 'APPLY_SETTINGS'/); assert.match(text,/muteBase: \(\) => applyBaseSettings\(tabId, \{ volume: 0 \}\)/); assert.match(text,/restoreBase: \(\) => applyBaseSettings\(tabId, originalSettings\)/);
 });
 
