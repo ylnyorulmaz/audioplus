@@ -1,5 +1,4 @@
 import * as ort from 'onnxruntime-web/webgpu';
-import { getInstalledLiveAiModel } from './live-ai-model-store.js';
 import { MDX_INST_HQ3, mdxGenerationSize, mdxTrim, validateMdxMetadata } from './mdx-profile.js';
 import { MdxStft } from './mdx-stft.js';
 
@@ -23,18 +22,19 @@ function disposeOutputs(outputs) {
   }
 }
 
-async function init(runtimePath) {
+async function init(runtimePath, modelUrl) {
   if (session) return;
   ort.env.wasm.wasmPaths = runtimePath;
   ort.env.wasm.numThreads = 1;
 
-  const installed = await getInstalledLiveAiModel();
-  if (!installed?.bytes) throw new Error('Install the verified UVR-MDX-NET-Inst_HQ_3 model in AI Karaoke Lab first.');
-  if (installed.sha256 !== MDX_INST_HQ3.sha256) throw new Error('Installed AI model metadata does not match UVR-MDX-NET-Inst_HQ_3.');
-  const hash = await sha256Hex(installed.bytes);
-  if (hash !== MDX_INST_HQ3.sha256) throw new Error('Installed AI model bytes failed SHA-256 verification. Reinstall the model.');
+  if (!modelUrl) throw new Error('Packaged AI model URL is missing.');
+  const response = await fetch(modelUrl);
+  if (!response.ok) throw new Error('Packaged AI model is missing. Rebuild/reinstall Audio+ so all AI assets are included.');
+  const modelBytes = await response.arrayBuffer();
+  const hash = await sha256Hex(modelBytes);
+  if (hash !== MDX_INST_HQ3.sha256) throw new Error('Packaged AI model failed integrity verification. Rebuild/reinstall Audio+.');
 
-  session = await ort.InferenceSession.create(new Uint8Array(installed.bytes), {
+  session = await ort.InferenceSession.create(new Uint8Array(modelBytes), {
     executionProviders: ['webgpu'],
     graphOptimizationLevel: 'all'
   });
@@ -97,7 +97,7 @@ globalThis.onmessage = (event) => {
   const message = event.data ?? {};
   (async () => {
     if (message.type === 'INIT') {
-      await init(message.runtimePath);
+      await init(message.runtimePath, message.modelUrl);
       post('READY', {
         sampleRate: MDX_INST_HQ3.sampleRate,
         chunkSize: MDX_INST_HQ3.hopLength * (MDX_INST_HQ3.dimT - 1),
@@ -112,7 +112,6 @@ globalThis.onmessage = (event) => {
     if (message.type === 'DISPOSE') {
       await dispose();
       post('DISPOSED');
-      return;
     }
   })().catch((error) => post('ERROR', { message: error?.message ?? String(error), sequence: message.sequence ?? null }));
 };
