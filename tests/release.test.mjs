@@ -42,7 +42,7 @@ test('manifest is MV3 one-click 0.12.0 and action no longer uses transient defau
   const manifest=JSON.parse(await read('manifest.json'));
   assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.12.0');
   assert.deepEqual([...manifest.permissions].sort(),['activeTab','offscreen','storage','tabCapture'].sort());
-  assert.deepEqual(manifest.host_permissions,['https://huggingface.co/*']);
+  assert.deepEqual(manifest.host_permissions,['https://huggingface.co/*','https://*.huggingface.co/*','https://*.hf.co/*']);
   assert.equal(manifest.background.service_worker,'service-worker.js');
   assert.equal(manifest.action.default_popup,undefined);
 });
