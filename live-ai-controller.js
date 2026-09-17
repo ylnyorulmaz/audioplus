@@ -2,8 +2,10 @@ import { MDX_INST_HQ3, mdxChunkSize, mdxGenerationSize } from './mdx-profile.js'
 
 const MAX_RTF = 1.0;
 const GOOD_RTF = 0.6;
-const RING_CAPACITY_SAMPLES = mdxChunkSize(MDX_INST_HQ3) * 3;
+const RING_CAPACITY_SAMPLES = mdxChunkSize(MDX_INST_HQ3) * 2;
 const START_DELAY_SECONDS = 0.05;
+const GENERATED_AUDIO_MS = mdxGenerationSize(MDX_INST_HQ3) / MDX_INST_HQ3.sampleRate * 1000;
+const INFERENCE_WATCHDOG_MS = Math.ceil(GENERATED_AUDIO_MS * 1.15);
 
 class StereoRingBuffer {
   constructor(capacity) {
@@ -55,21 +57,37 @@ class StereoRingBuffer {
 
 function waitForWorkerReady(worker) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('AI worker initialization timed out.')), 30000);
+    const timeout = setTimeout(() => finishReject(new Error('AI worker initialization timed out.')), 30000);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      worker.removeEventListener('message', onMessage);
+      worker.removeEventListener('error', onError);
+    };
+    const finishReject = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const onError = (event) => finishReject(new Error(event?.message ?? 'AI worker failed to load.'));
     const onMessage = (event) => {
       const message = event.data ?? {};
       if (message.type === 'READY') {
-        clearTimeout(timeout);
-        worker.removeEventListener('message', onMessage);
+        cleanup();
         resolve(message);
       } else if (message.type === 'ERROR') {
-        clearTimeout(timeout);
-        worker.removeEventListener('message', onMessage);
-        reject(new Error(message.message ?? 'AI worker initialization failed.'));
+        finishReject(new Error(message.message ?? 'AI worker initialization failed.'));
       }
     };
+
     worker.addEventListener('message', onMessage);
+    worker.addEventListener('error', onError);
   });
+}
+
+function clearInferenceWatchdog(state) {
+  if (!state.inferenceTimer) return;
+  clearTimeout(state.inferenceTimer);
+  state.inferenceTimer = null;
 }
 
 function scheduleInstrumental(state, left, right) {
@@ -103,12 +121,27 @@ function maybeDispatch(state) {
   state.ring.consume(generationSize);
   state.inFlight = true;
   const sequence = state.sequence++;
+  clearInferenceWatchdog(state);
+  state.inferenceTimer = setTimeout(() => {
+    failToFallback(
+      state,
+      `${state.backend === 'wasm' ? 'CPU/WASM' : 'WebGPU'} inference exceeded the real-time budget; switching back before Chrome can bog down.`
+    ).catch(console.error);
+  }, INFERENCE_WATCHDOG_MS);
   state.worker.postMessage({ type: 'PROCESS_CHUNK', sequence, left: chunk.left, right: chunk.right }, [chunk.left.buffer, chunk.right.buffer]);
 }
 
 async function failToFallback(state, reason) {
   if (state.stopped) return;
-  state.status = { active: false, phase: 'fallback', reason, rtf: state.lastRtf, quality: 'fallback' };
+  clearInferenceWatchdog(state);
+  state.status = {
+    active: false,
+    phase: 'fallback',
+    reason,
+    rtf: state.lastRtf,
+    quality: 'fallback',
+    backend: state.backend
+  };
   state.onStatus(state.status);
   await stopLiveAi(state, { restoreBase: true, preserveStatus: true });
 }
@@ -152,13 +185,15 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
     limiter,
     playbackSources: new Set(),
     inFlight: false,
+    inferenceTimer: null,
     sequence: 0,
     firstChunkAccepted: false,
     baseMuted: false,
     nextPlaybackTime: 0,
     lastRtf: null,
+    backend: null,
     stopped: false,
-    status: { active: true, phase: 'warming', reason: null, rtf: null, quality: 'warming' },
+    status: { active: true, phase: 'warming', reason: null, rtf: null, quality: 'warming', backend: null },
     onStatus,
     muteBase,
     restoreBase
@@ -170,13 +205,16 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
     const message = event.data ?? {};
     if (state.stopped) return;
     if (message.type === 'ERROR') {
+      clearInferenceWatchdog(state);
       state.inFlight = false;
       await failToFallback(state, message.message ?? 'AI worker failed.');
       return;
     }
     if (message.type !== 'CHUNK_READY') return;
 
+    clearInferenceWatchdog(state);
     state.inFlight = false;
+    state.backend = message.backend ?? state.backend;
     state.lastRtf = Number(message.rtf);
     if (!Number.isFinite(state.lastRtf) || state.lastRtf > MAX_RTF) {
       await failToFallback(state, `RTF ${Number.isFinite(state.lastRtf) ? state.lastRtf.toFixed(2) : 'invalid'}× is too slow for bounded live playback.`);
@@ -196,6 +234,7 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
         reason: null,
         rtf: state.lastRtf,
         quality: state.lastRtf <= GOOD_RTF ? 'good' : 'warning',
+        backend: state.backend,
         bufferedSeconds: state.ring.length / MDX_INST_HQ3.sampleRate,
         queueSeconds: Math.max(0, state.nextPlaybackTime - aiContext.currentTime)
       };
@@ -219,15 +258,28 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
 
   const readyPromise = waitForWorkerReady(worker);
   worker.postMessage({ type: 'INIT', runtimePath: chrome.runtime.getURL('vendor/ort/') });
-  await readyPromise;
-  state.status = { ...state.status, phase: 'buffering' };
-  onStatus(state.status);
-  return state;
+
+  try {
+    const ready = await readyPromise;
+    state.backend = ready.backend ?? null;
+    state.status = {
+      ...state.status,
+      phase: 'buffering',
+      backend: state.backend,
+      backendNote: ready.webgpuFallbackReason ?? null
+    };
+    onStatus(state.status);
+    return state;
+  } catch (error) {
+    await stopLiveAi(state, { restoreBase: false, preserveStatus: true }).catch(() => {});
+    throw error;
+  }
 }
 
 export async function stopLiveAi(state, { restoreBase = true, preserveStatus = false } = {}) {
   if (!state || state.stopped) return;
   state.stopped = true;
+  clearInferenceWatchdog(state);
 
   try { state.script.onaudioprocess = null; } catch {}
   for (const source of state.playbackSources) {
@@ -250,7 +302,7 @@ export async function stopLiveAi(state, { restoreBase = true, preserveStatus = f
     state.baseMuted = false;
   }
   if (!preserveStatus) {
-    state.status = { active: false, phase: 'off', reason: null, rtf: state.lastRtf, quality: 'off' };
+    state.status = { active: false, phase: 'off', reason: null, rtf: state.lastRtf, quality: 'off', backend: state.backend };
     state.onStatus(state.status);
   }
 }
@@ -258,6 +310,7 @@ export async function stopLiveAi(state, { restoreBase = true, preserveStatus = f
 export const LIVE_AI_LIMITS = Object.freeze({
   maxRtf: MAX_RTF,
   goodRtf: GOOD_RTF,
+  inferenceWatchdogMs: INFERENCE_WATCHDOG_MS,
   ringCapacitySeconds: RING_CAPACITY_SAMPLES / MDX_INST_HQ3.sampleRate,
   modelChunkSeconds: mdxChunkSize(MDX_INST_HQ3) / MDX_INST_HQ3.sampleRate,
   generatedChunkSeconds: mdxGenerationSize(MDX_INST_HQ3) / MDX_INST_HQ3.sampleRate
