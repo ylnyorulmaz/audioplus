@@ -64,12 +64,10 @@ async function startLive(tabId) {
     rtf: null,
     tookOverFromAnotherTab: stoppedTabs.length > 0
   });
-  const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
   const response = await chrome.runtime.sendMessage({
     target: 'live-offscreen',
     type: 'START_LIVE_AI',
     tabId,
-    streamId,
     originalSettings: sanitizeSettings(state)
   });
   if (!response?.ok) throw new Error(response?.error ?? 'Could not start Live AI Karaoke.');
