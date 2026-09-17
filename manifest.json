@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Audio+",
-  "version": "0.10.0",
-  "description": "Browser audio toolkit with Smart Fix, live spectrum, Fast Karaoke DSP, and experimental local MDX WebGPU 2-stem separation.",
+  "version": "0.11.0",
+  "description": "Browser audio toolkit with Smart Fix, Fast Karaoke, and bounded local MDX WebGPU Live AI Karaoke beta.",
   "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",
@@ -14,7 +14,7 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
   },
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "service-worker.js",
     "type": "module"
   },
   "action": {

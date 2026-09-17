@@ -10,16 +10,19 @@ Audio+ is designed to process browser audio and user-selected local audio entire
 - Hostnames for sites where the user explicitly enables a site-specific profile.
 - Short-lived local measurements used by Smart Fix, such as broad spectral energy, RMS, and peak level.
 - Short-lived live-spectrum measurements shown while the popup's Advanced panel is open.
-- In AI Karaoke Lab, an ONNX model file the user explicitly chooses from their own device.
+- In AI Karaoke Lab, the verified UVR-MDX-NET-Inst_HQ_3 ONNX model file the user explicitly chooses from their own device.
 - In AI Karaoke Lab, an audio file the user explicitly chooses for local stem separation.
+- In Live AI Karaoke beta, short bounded PCM chunks from the user-selected browser tab plus locally reconstructed Instrumental audio.
 
 ## Where processing happens
 
-Tab audio is processed locally in Chrome with the Web Audio API. Smart Fix analysis and the live spectrum use the same local tab-audio processing graph.
+Tab audio is processed locally in Chrome with the Web Audio API. Smart Fix analysis and the live spectrum use the local tab-audio graph.
 
-AI Karaoke Lab uses packaged ONNX Runtime Web code, packaged DSP code, and WebGPU on the user's device. The selected ONNX model is read locally with the browser file API. Selected audio is decoded locally, transformed to MDX spectrogram tensors, inferred locally through WebGPU, reconstructed locally, and exposed as local browser Blob URLs for preview/download.
+AI Karaoke uses packaged ONNX Runtime Web code, packaged DSP code, and WebGPU on the user's device. The exact HQ3 model is SHA-256 verified before use. Local-file separation and Live AI Karaoke perform STFT, ONNX inference, iSTFT, and reconstruction on-device.
 
-Audio+ does not upload, transmit, sell, or share captured tab audio, local audio files, generated stems, audio-analysis measurements, or user-selected ONNX model bytes.
+Live AI Karaoke uses a dedicated local worker and a bounded in-memory ring buffer. If the model cannot keep up in real time, the buffer reaches its hard limit, or playback underruns, AI processing stops and Audio+ restores the normal local audio path.
+
+Audio+ does not upload, transmit, sell, or share captured tab audio, local audio files, generated stems, audio-analysis measurements, or ONNX model bytes.
 
 ## Storage
 
@@ -29,15 +32,15 @@ Audio+ uses Chrome extension storage for:
 - custom presets;
 - per-site profile settings;
 - Smart Fix enabled state and its correction curve;
-- temporary per-tab runtime state and the latest Smart Fix explanation.
+- temporary per-tab runtime state and Live AI Karaoke status.
 
-Live spectrum snapshots are not stored as a history. AI Karaoke Lab does not persist the selected ONNX model, selected audio, or generated stem audio in extension storage. Model sessions and generated Blob URLs are released when the lab page is closed or explicitly released.
+After the user explicitly selects and verifies the exact HQ3 model in AI Karaoke Lab, Audio+ stores a local copy of that verified model in the extension origin's IndexedDB so Live AI Karaoke can work after the Lab page closes. The model is not uploaded or fetched remotely by Audio+.
 
-These settings remain inside Chrome's extension storage unless the user removes the extension or clears its data.
+Live spectrum snapshots, captured PCM chunks, local audio files, and generated stem audio are not stored as histories. Live PCM buffers are bounded and discarded as playback advances or Live AI Karaoke stops.
 
 ## Network access
 
-Audio+ does not require a backend service and does not send analytics or telemetry. AI Karaoke Lab does not use a remote LLM, remote audio-processing service, remote model download, model upload, or audio upload.
+Audio+ does not require a backend service and does not send analytics or telemetry. AI Karaoke does not use a remote LLM, remote audio-processing service, remote model inference, model upload, or audio upload.
 
 Executable ONNX Runtime JavaScript/WASM is packaged locally with the extension rather than loaded from a CDN.
 
@@ -45,10 +48,10 @@ Executable ONNX Runtime JavaScript/WASM is packaged locally with the extension r
 
 - `activeTab`: identify the tab the user explicitly activates Audio+ on.
 - `tabCapture`: capture audio from that user-selected tab.
-- `offscreen`: keep the local Web Audio processing graph alive after the popup closes.
-- `storage`: remember settings, presets, Smart Fix curves, and per-site profiles locally.
+- `offscreen`: keep local audio and bounded AI processing alive after the popup closes.
+- `storage`: remember settings, presets, Smart Fix curves, and temporary Live AI state locally.
 
-AI Karaoke Lab adds no new Chrome permission.
+Live AI Karaoke adds no new Chrome permission.
 
 ## Contact
 

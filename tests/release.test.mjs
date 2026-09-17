@@ -79,13 +79,13 @@ test('Smart Fix can recognize thin and harsh profiles', () => {
   assert.ok(harsh.bands[8] < 0);
 });
 
-test('manifest is MV3 V3 separation prototype 0.10.0 with minimum audio permissions', async () => {
+test('manifest is MV3 Live AI Karaoke beta 0.11.0 with minimum audio permissions', async () => {
   const manifest=JSON.parse(await readFile(new URL('../manifest.json',import.meta.url),'utf8'));
   assert.equal(manifest.manifest_version,3);
-  assert.equal(manifest.version,'0.10.0');
+  assert.equal(manifest.version,'0.11.0');
   assert.deepEqual([...manifest.permissions].sort(),['activeTab','offscreen','storage','tabCapture'].sort());
   assert.equal(manifest.host_permissions,undefined);
-  assert.equal(manifest.background.service_worker,'background.js');
+  assert.equal(manifest.background.service_worker,'service-worker.js');
 });
 
 test('package version matches manifest version', async () => {
