@@ -1,3 +1,5 @@
+import './persistent-target-shim.js';
+
 const minimizeButton = document.querySelector('#minimizeWindow');
 const closeButton = document.querySelector('#closeWindow');
 const settingsButton = document.querySelector('#settingsButton');
