@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Audio+",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "Native Chrome side-panel audio control with Smart Fix, Fast Karaoke, and local AI Karaoke with WebGPU-first safe CPU fallback.",
   "minimum_chrome_version": "116",
   "permissions": [
