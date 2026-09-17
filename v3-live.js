@@ -23,6 +23,11 @@ function setStatus(text, tone = '') {
   status.dataset.tone = tone;
 }
 function humanMb(bytes) { return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
+function engineLabel(backend) {
+  if (backend === 'webgpu') return 'WebGPU';
+  if (backend === 'wasm') return 'CPU/WASM';
+  return null;
+}
 
 async function sha256Hex(buffer) {
   const digest = await crypto.subtle.digest('SHA-256', buffer);
@@ -33,7 +38,7 @@ async function readLiveState() {
   if (!activeTab?.id) return { active: false, phase: 'off', quality: 'off' };
   const key = liveKey(activeTab.id);
   const result = await chrome.storage.session.get(key);
-  return result[key] ?? { active: false, phase: 'off', quality: 'off', reason: null, rtf: null };
+  return result[key] ?? { active: false, phase: 'off', quality: 'off', reason: null, rtf: null, backend: null };
 }
 
 function isActive(state) {
@@ -42,15 +47,24 @@ function isActive(state) {
 
 function describe(state) {
   if (busy) return status.textContent;
-  if (state.phase === 'starting') return 'Starting AI Karaoke…';
-  if (state.phase === 'warming' || state.phase === 'buffering') return 'Preparing the first AI audio window and measuring this device…';
+  const engine = engineLabel(state.backend);
+  if (state.phase === 'starting') return 'Starting local AI engine…';
+  if (state.phase === 'warming') return 'Preparing AI Karaoke: WebGPU first, safe CPU fallback if needed…';
+  if (state.phase === 'buffering') {
+    if (state.backend === 'wasm') return 'WebGPU unavailable. Testing CPU/WASM real-time speed safely…';
+    if (state.backend === 'webgpu') return 'WebGPU ready. Measuring real-time speed…';
+    return 'Preparing the first AI audio window and measuring this device…';
+  }
   if (state.phase === 'live') {
     const rtf = Number.isFinite(state.rtf) ? ` · RTF ${state.rtf.toFixed(2)}×` : '';
-    return `AI Karaoke ON${rtf}`;
+    return `AI Karaoke ON${engine ? ` · ${engine}` : ''}${rtf}`;
   }
-  if (state.phase === 'fallback') return `AI mode stopped safely; normal Audio+ audio is back. ${state.reason ?? ''}`.trim();
+  if (state.phase === 'fallback') {
+    const prefix = state.backend === 'wasm' ? 'CPU fallback was not fast enough; normal Audio+ is back.' : 'AI mode stopped safely; normal Audio+ audio is back.';
+    return `${prefix} ${state.reason ?? ''}`.trim();
+  }
   if (state.phase === 'error') return `AI Karaoke could not start. ${state.reason ?? ''}`.trim();
-  return 'Ready. First use installs the local AI model automatically.';
+  return 'Ready. First use installs the local AI model automatically. GPU is preferred; CPU fallback is automatic.';
 }
 
 function render(state) {
@@ -62,13 +76,6 @@ function render(state) {
     const tone = state.phase === 'live' ? (state.quality === 'good' ? 'success' : 'warning') : ['fallback', 'error'].includes(state.phase) ? 'warning' : '';
     setStatus(describe(state), tone);
   }
-}
-
-async function checkWebGpu() {
-  if (!navigator.gpu) throw new Error('This browser/device does not expose WebGPU. Fast Karaoke still works.');
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-  if (!adapter) throw new Error('No compatible WebGPU adapter was found. Fast Karaoke still works.');
-  return adapter;
 }
 
 async function downloadVerifiedModel() {
@@ -132,12 +139,11 @@ async function ensureBaseAudio() {
 async function startOneClickAi() {
   busy = true; render(await readLiveState());
   try {
-    setStatus('Checking local AI support…');
-    await checkWebGpu();
+    setStatus('Preparing local AI engine (WebGPU first, CPU fallback)…');
     await downloadVerifiedModel();
     await ensureBaseAudio();
     setStatus('Starting Live AI Karaoke…');
-    const response = await chrome.runtime.sendMessage({ type: 'START_LIVE_AI_REQUEST', tabId: activeTab.id });
+    const response = await chrome.runtime.sendMessage({ type: 'START_LIVE_AI_REQUEST', target: 'live-background', tabId: activeTab.id });
     if (!response?.ok) throw new Error(response?.error ?? 'Live AI request was rejected.');
   } finally {
     busy = false;
@@ -148,7 +154,7 @@ async function startOneClickAi() {
 async function stopAi() {
   busy = true; button.disabled = true; setStatus('Turning AI Karaoke off…');
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'STOP_LIVE_AI_REQUEST', tabId: activeTab.id });
+    const response = await chrome.runtime.sendMessage({ type: 'STOP_LIVE_AI_REQUEST', target: 'live-background', tabId: activeTab.id });
     if (!response?.ok) throw new Error(response?.error ?? 'Could not stop AI Karaoke.');
   } finally { busy = false; await refresh(); }
 }
