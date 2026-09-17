@@ -27,20 +27,31 @@ test('target resolver keeps persistent window bound to the original browser tab'
   assert.match(text,/tabId/); assert.match(text,/chrome\.tabs\.get/); assert.match(text,/protocol === 'http:'/);
 });
 
-test('build emits a dedicated classic live AI worker bundle', async () => {
+test('build emits worker bundle and packages local ONNX WASM assets', async () => {
   const text=await read('scripts/build.mjs');
   assert.match(text,/entryPoints: \['live-ai-worker-entry\.js'\]/); assert.match(text,/format: 'iife'/); assert.match(text,/outfile: join\(distDir, 'live-ai-worker\.js'\)/);
+  assert.match(text,/ort-wasm\.\*\\\.\(\?:wasm\|mjs\)/); assert.match(text,/vendor\/ort|ortDir/);
 });
 
-test('live AI worker is strict WebGPU HQ3 and returns measured RTF', async () => {
+test('live AI worker prefers WebGPU then falls back to single-thread WASM CPU', async () => {
   const text=await read('live-ai-worker-entry.js');
-  assert.match(text,/onnxruntime-web\/webgpu/); assert.match(text,/executionProviders: \['webgpu'\]/); assert.match(text,/MDX_INST_HQ3\.sha256/); assert.match(text,/mdxGenerationSize/); assert.match(text,/rtf: elapsedMs \/ audioMs/); assert.match(text,/PROCESS_CHUNK/);
+  assert.match(text,/onnxruntime-web\/webgpu/);
+  assert.match(text,/executionProviders: \['webgpu'\]/);
+  assert.match(text,/executionProviders: \['wasm'\]/);
+  assert.match(text,/ort\.env\.wasm\.numThreads = 1/);
+  assert.match(text,/webgpuFallbackReason/);
+  assert.match(text,/backend/);
+  assert.match(text,/rtf: elapsedMs \/ audioMs/);
+  assert.match(text,/PROCESS_CHUNK/);
 });
 
-test('live AI controller hard-bounds memory and falls back above real time', async () => {
+test('live AI controller hard-bounds memory, watchdog time, and RTF', async () => {
   const text=await read('live-ai-controller.js');
-  assert.match(text,/const MAX_RTF = 1\.0/); assert.match(text,/const GOOD_RTF = 0\.6/); assert.match(text,/RING_CAPACITY_SAMPLES = mdxChunkSize\(MDX_INST_HQ3\) \* 3/);
-  assert.match(text,/ring buffer reached its hard limit/); assert.match(text,/underrun/); assert.match(text,/state\.lastRtf > MAX_RTF/); assert.match(text,/await state\.restoreBase/);
+  assert.match(text,/const MAX_RTF = 1\.0/); assert.match(text,/const GOOD_RTF = 0\.6/);
+  assert.match(text,/RING_CAPACITY_SAMPLES = mdxChunkSize\(MDX_INST_HQ3\) \* 2/);
+  assert.match(text,/INFERENCE_WATCHDOG_MS/); assert.match(text,/inference exceeded the real-time budget/);
+  assert.match(text,/ring buffer reached its hard limit/); assert.match(text,/underrun/); assert.match(text,/state\.lastRtf > MAX_RTF/);
+  assert.match(text,/state\.worker\.terminate/); assert.match(text,/stopLiveAi\(state, \{ restoreBase: false, preserveStatus: true \}\)/);
 });
 
 test('Live AI is exclusive across tabs while base Audio+ remains per-tab', async () => {
@@ -49,10 +60,12 @@ test('Live AI is exclusive across tabs while base Audio+ remains per-tab', async
   const base=await read('background.js'); assert.match(base,/audioPlus\.tab\./); assert.match(base,/message\.tabId/);
 });
 
-test('one-click AI Karaoke auto-downloads, verifies, installs, enables Audio+, and starts live AI', async () => {
+test('one-click AI Karaoke no longer blocks on a UI WebGPU preflight', async () => {
   const text=await read('v3-live.js');
   assert.match(text,/huggingface\.co\/seanghay\/uvr_models\/resolve/); assert.match(text,/crypto\.subtle\.digest\('SHA-256'/); assert.match(text,/hash !== MDX_INST_HQ3\.sha256/);
   assert.match(text,/installLiveAiModel/); assert.match(text,/type: 'START_CAPTURE'/); assert.match(text,/type: 'START_LIVE_AI_REQUEST'/); assert.match(text,/Turn AI Karaoke Off/);
+  assert.match(text,/WebGPU first, CPU fallback/); assert.match(text,/CPU\/WASM/);
+  assert.doesNotMatch(text,/requestAdapter/); assert.doesNotMatch(text,/powerPreference/);
 });
 
 test('model store keeps verified weights local in IndexedDB', async () => {

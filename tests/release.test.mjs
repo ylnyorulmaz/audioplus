@@ -38,14 +38,15 @@ test('Smart Fix remains conservative', () => {
   assert.ok(scores.muddy>=90); assert.ok(fix.bands.every((value)=>Math.abs(value)<=SMART_FIX_MAX_DB));
 });
 
-test('manifest is MV3 multi-tab-aware 0.13.0 without broad tabs permission', async () => {
+test('manifest is MV3 multi-tab-aware 0.14.0 without broad tabs permission', async () => {
   const manifest=JSON.parse(await read('manifest.json'));
-  assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.13.0');
+  assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.14.0');
   assert.deepEqual([...manifest.permissions].sort(),['activeTab','offscreen','storage','tabCapture'].sort());
   assert.equal(manifest.permissions.includes('tabs'),false);
   assert.deepEqual(manifest.host_permissions,['https://huggingface.co/*','https://*.huggingface.co/*','https://*.hf.co/*']);
   assert.equal(manifest.background.service_worker,'service-worker.js');
   assert.equal(manifest.action.default_popup,undefined);
+  assert.match(manifest.description,/WebGPU-first safe CPU fallback/);
 });
 
 test('package version matches manifest version', async () => {
