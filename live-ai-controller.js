@@ -110,19 +110,18 @@ async function failToFallback(state, reason) {
   if (state.stopped) return;
   state.status = { active: false, phase: 'fallback', reason, rtf: state.lastRtf, quality: 'fallback' };
   state.onStatus(state.status);
-  await stopLiveAi(state, { reconnectOriginal: true, preserveStatus: true });
+  await stopLiveAi(state, { restoreBase: true, preserveStatus: true });
 }
 
-export async function startLiveAi(processor, { onStatus = () => {} } = {}) {
-  if (!processor) throw new Error('No active Audio+ processor for this tab.');
-  if (processor.liveAi && !processor.liveAi.stopped) return processor.liveAi.status;
+export async function startLiveAi({ stream, onStatus = () => {}, muteBase = async () => {}, restoreBase = async () => {} } = {}) {
+  if (!stream) throw new Error('Live AI Karaoke requires a captured tab stream.');
 
   const aiContext = new AudioContext({ sampleRate: MDX_INST_HQ3.sampleRate, latencyHint: 'playback' });
   if (aiContext.state === 'suspended') await aiContext.resume();
 
   const worker = new Worker(chrome.runtime.getURL('dist/live-ai-worker.js'));
   const ring = new StereoRingBuffer(RING_CAPACITY_SAMPLES);
-  const captureSource = aiContext.createMediaStreamSource(processor.stream);
+  const captureSource = aiContext.createMediaStreamSource(stream);
   const script = aiContext.createScriptProcessor(4096, 2, 2);
   const silentGain = aiContext.createGain();
   const outputGain = aiContext.createGain();
@@ -142,7 +141,7 @@ export async function startLiveAi(processor, { onStatus = () => {} } = {}) {
   limiter.connect(aiContext.destination);
 
   const state = {
-    processor,
+    stream,
     aiContext,
     worker,
     ring,
@@ -155,23 +154,24 @@ export async function startLiveAi(processor, { onStatus = () => {} } = {}) {
     inFlight: false,
     sequence: 0,
     firstChunkAccepted: false,
-    originalDisconnected: false,
+    baseMuted: false,
     nextPlaybackTime: 0,
     lastRtf: null,
     stopped: false,
     status: { active: true, phase: 'warming', reason: null, rtf: null, quality: 'warming' },
-    onStatus
+    onStatus,
+    muteBase,
+    restoreBase
   };
 
-  processor.liveAi = state;
   onStatus(state.status);
 
-  worker.addEventListener('message', (event) => {
+  worker.addEventListener('message', async (event) => {
     const message = event.data ?? {};
     if (state.stopped) return;
     if (message.type === 'ERROR') {
       state.inFlight = false;
-      failToFallback(state, message.message ?? 'AI worker failed.').catch(console.error);
+      await failToFallback(state, message.message ?? 'AI worker failed.');
       return;
     }
     if (message.type !== 'CHUNK_READY') return;
@@ -179,15 +179,15 @@ export async function startLiveAi(processor, { onStatus = () => {} } = {}) {
     state.inFlight = false;
     state.lastRtf = Number(message.rtf);
     if (!Number.isFinite(state.lastRtf) || state.lastRtf > MAX_RTF) {
-      failToFallback(state, `RTF ${Number.isFinite(state.lastRtf) ? state.lastRtf.toFixed(2) : 'invalid'}× is too slow for bounded live playback.`).catch(console.error);
+      await failToFallback(state, `RTF ${Number.isFinite(state.lastRtf) ? state.lastRtf.toFixed(2) : 'invalid'}× is too slow for bounded live playback.`);
       return;
     }
 
     try {
       if (!state.firstChunkAccepted) {
         state.firstChunkAccepted = true;
-        try { processor.peakLimiter.disconnect(); } catch {}
-        state.originalDisconnected = true;
+        await state.muteBase();
+        state.baseMuted = true;
       }
       scheduleInstrumental(state, message.left, message.right);
       state.status = {
@@ -202,7 +202,7 @@ export async function startLiveAi(processor, { onStatus = () => {} } = {}) {
       onStatus(state.status);
       maybeDispatch(state);
     } catch (error) {
-      failToFallback(state, error?.message ?? String(error)).catch(console.error);
+      await failToFallback(state, error?.message ?? String(error));
     }
   });
 
@@ -222,11 +222,10 @@ export async function startLiveAi(processor, { onStatus = () => {} } = {}) {
   await readyPromise;
   state.status = { ...state.status, phase: 'buffering' };
   onStatus(state.status);
-  return state.status;
+  return state;
 }
 
-export async function stopLiveAi(stateOrProcessor, { reconnectOriginal = true, preserveStatus = false } = {}) {
-  const state = stateOrProcessor?.worker ? stateOrProcessor : stateOrProcessor?.liveAi;
+export async function stopLiveAi(state, { restoreBase = true, preserveStatus = false } = {}) {
   if (!state || state.stopped) return;
   state.stopped = true;
 
@@ -235,6 +234,9 @@ export async function stopLiveAi(stateOrProcessor, { reconnectOriginal = true, p
     try { source.stop(); } catch {}
   }
   state.playbackSources.clear();
+  for (const track of state.stream.getTracks()) {
+    try { track.stop(); } catch {}
+  }
   for (const node of [state.captureSource, state.script, state.silentGain, state.outputGain, state.limiter]) {
     try { node.disconnect(); } catch {}
   }
@@ -243,19 +245,14 @@ export async function stopLiveAi(stateOrProcessor, { reconnectOriginal = true, p
   if (state.aiContext.state !== 'closed') await state.aiContext.close();
   state.ring.clear();
 
-  if (reconnectOriginal && state.originalDisconnected) {
-    try { state.processor.peakLimiter.connect(state.processor.context.destination); } catch {}
-    state.originalDisconnected = false;
+  if (restoreBase && state.baseMuted) {
+    await state.restoreBase().catch(() => {});
+    state.baseMuted = false;
   }
   if (!preserveStatus) {
     state.status = { active: false, phase: 'off', reason: null, rtf: state.lastRtf, quality: 'off' };
     state.onStatus(state.status);
   }
-  if (state.processor.liveAi === state) state.processor.liveAi = null;
-}
-
-export function getLiveAiStatus(processor) {
-  return processor?.liveAi?.status ?? { active: false, phase: 'off', reason: null, rtf: null, quality: 'off' };
 }
 
 export const LIVE_AI_LIMITS = Object.freeze({
