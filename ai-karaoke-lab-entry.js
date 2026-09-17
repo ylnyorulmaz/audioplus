@@ -95,7 +95,7 @@ async function checkWebGpu() {
     return null;
   }
   setStatus(deviceStatus, 'Checking WebGPU adapter…');
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+  const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) {
     setStatus(deviceStatus, 'No compatible WebGPU adapter was returned.', 'error');
     return null;

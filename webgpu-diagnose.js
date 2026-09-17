@@ -24,10 +24,9 @@ export async function diagnoseWebGpu() {
   }
 
   try {
-    const adapter =
-      (await gpu.requestAdapter({ powerPreference: 'high-performance' })) ??
-      (await gpu.requestAdapter()) ??
-      null;
+    // Do not pass powerPreference: Chrome on Windows ignores it and logs a noisy warning
+    // (crbug.com/369219127). Default adapter selection is what live AI gets anyway.
+    const adapter = (await gpu.requestAdapter()) ?? null;
     if (!adapter) {
       return {
         ok: false,

@@ -118,5 +118,5 @@ test('side panel uses responsive full-width equalizer layout', async () => {
 test('peak protection and stable V2 processing graph remain intact', async () => {
   const source=await read('offscreen.js');
   assert.match(source,/masterGain\.connect\(peakLimiter\)/); assert.match(source,/peakLimiter\.connect\(context\.destination\)/); assert.match(source,/ratio:\s*20/);
-  assert.match(source,/VOCAL_LOW_CROSSOVER_HZ = 180/); assert.match(source,/VOCAL_HIGH_CROSSOVER_HZ = 6500/); assert.match(source,/case 'GET_SPECTRUM'/); assert.match(source,/case 'ANALYZE_AUDIO'/);
+  assert.match(source,/VOCAL_LOW_CROSSOVER_HZ = 250/); assert.match(source,/VOCAL_HIGH_CROSSOVER_HZ = 4000/); assert.match(source,/VOCAL_PRESENCE_HZ = 2500/); assert.match(source,/midPresence/); assert.match(source,/case 'GET_SPECTRUM'/); assert.match(source,/case 'ANALYZE_AUDIO'/);
 });

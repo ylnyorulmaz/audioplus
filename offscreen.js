@@ -15,8 +15,10 @@ const NIGHT_DYNAMICS = Object.freeze({
   light: Object.freeze({ threshold: -24, knee: 12, ratio: 3, attack: 0.012, release: 0.25 }),
   strong: Object.freeze({ threshold: -32, knee: 18, ratio: 6, attack: 0.008, release: 0.35 })
 });
-const VOCAL_LOW_CROSSOVER_HZ = 180;
-const VOCAL_HIGH_CROSSOVER_HZ = 6500;
+const VOCAL_LOW_CROSSOVER_HZ = 250;
+const VOCAL_HIGH_CROSSOVER_HZ = 4000;
+const VOCAL_PRESENCE_HZ = 2500;
+const VOCAL_PRESENCE_MAX_DB = 2.5;
 const ANALYSIS_SAMPLES = 12;
 const ANALYSIS_INTERVAL_MS = 110;
 const ANALYSIS_BANDS = Object.freeze({
@@ -102,6 +104,7 @@ function disconnectVocalReducer(reducer) {
     reducer.lowGain,
     reducer.midHighpass,
     reducer.midLowpass,
+    reducer.midPresence,
     reducer.midGain,
     reducer.highpass,
     reducer.highGain,
@@ -165,12 +168,17 @@ function applyVocalReduction(processor, settings) {
   smoothParam(reducer.midGain.gain, active ? 1 : 0, processor.context);
   smoothParam(reducer.highGain.gain, active ? 1 : 0, processor.context);
 
+  // Keep bass untouched when requested; mid is the main vocal kill; high cancel stays light
+  // so air/cymbals remain. Soften mid slightly at Max so stereo sides are less “dead”.
   const lowAmount = settings.keepBass ? 0 : aggressive * 0.28;
-  const midAmount = aggressive;
-  const highAmount = aggressive * 0.42;
+  const midAmount = aggressive * 0.92;
+  const highAmount = aggressive * 0.2;
   setCenterReduction(reducer.lowMatrix, lowAmount, processor.context);
   setCenterReduction(reducer.midMatrix, midAmount, processor.context);
   setCenterReduction(reducer.highMatrix, highAmount, processor.context);
+
+  // Light presence restore after center cancel puts instrument body back into the mid band.
+  smoothParam(reducer.midPresence.gain, active ? aggressive * VOCAL_PRESENCE_MAX_DB : 0, processor.context);
 }
 
 function applySettings(processor, incoming) {
@@ -247,6 +255,11 @@ function createVocalReducer(context, input) {
   midLowpass.frequency.value = VOCAL_HIGH_CROSSOVER_HZ;
   midLowpass.Q.value = 0.707;
   const midMatrix = createStereoCenterReducer(context);
+  const midPresence = context.createBiquadFilter();
+  midPresence.type = 'peaking';
+  midPresence.frequency.value = VOCAL_PRESENCE_HZ;
+  midPresence.Q.value = 0.9;
+  midPresence.gain.value = 0;
   const midGain = context.createGain();
 
   const highpass = context.createBiquadFilter();
@@ -272,7 +285,8 @@ function createVocalReducer(context, input) {
   input.connect(midHighpass);
   midHighpass.connect(midLowpass);
   midLowpass.connect(midMatrix.splitter);
-  midMatrix.merger.connect(midGain);
+  midMatrix.merger.connect(midPresence);
+  midPresence.connect(midGain);
   midGain.connect(output);
 
   input.connect(highpass);
@@ -288,6 +302,7 @@ function createVocalReducer(context, input) {
     midHighpass,
     midLowpass,
     midMatrix,
+    midPresence,
     midGain,
     highpass,
     highMatrix,
