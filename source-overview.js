@@ -29,7 +29,7 @@ async function readOverview() {
 }
 
 function render(overview) {
-  if (!overview) return;
+  if (!overview || !sourceName) return;
   const label = overview.label ?? {};
   sourceName.textContent = label.title || label.host || fallbackName(targetTab);
 
@@ -38,21 +38,22 @@ function render(overview) {
     catch { return ''; }
   })();
   const targetAudio = overview.targetAudible ? 'playing audio' : 'selected';
-  sourceMeta.textContent = host ? `${host} · ${targetAudio}` : targetAudio;
-  sourceStateDot.dataset.audible = String(Boolean(overview.targetAudible));
+  if (sourceMeta) sourceMeta.textContent = host ? `${host} · ${targetAudio}` : targetAudio;
+  if (sourceStateDot) sourceStateDot.dataset.audible = String(Boolean(overview.targetAudible));
 
-  audibleTabsBadge.textContent = overview.otherAudibleCount > 0
+  if (audibleTabsBadge) audibleTabsBadge.textContent = overview.otherAudibleCount > 0
     ? `${plural(overview.otherAudibleCount, 'other tab')} playing`
     : 'No other audio tabs';
-  audibleTabsBadge.dataset.active = String(overview.otherAudibleCount > 0);
+  if (audibleTabsBadge) audibleTabsBadge.dataset.active = String(overview.otherAudibleCount > 0);
 
-  sessionsBadge.textContent = overview.otherEnabledCount > 0
+  if (sessionsBadge) sessionsBadge.textContent = overview.otherEnabledCount > 0
     ? `Audio+ on ${plural(overview.enabledCount, 'tab')}`
     : overview.enabledCount === 1
       ? 'Only this Audio+ session'
       : 'No active Audio+ session';
-  sessionsBadge.dataset.active = String(overview.otherEnabledCount > 0);
+  if (sessionsBadge) sessionsBadge.dataset.active = String(overview.otherEnabledCount > 0);
 
+  if (!sourceHint) return;
   if (overview.otherAudibleCount > 0 || overview.otherEnabledCount > 0) {
     sourceHint.textContent = 'Audio+ controls this selected tab only. To switch, open another browser tab and click the Audio+ extension icon there.';
   } else {
@@ -62,7 +63,7 @@ function render(overview) {
 
 async function refresh() {
   try { render(await readOverview()); }
-  catch (error) { sourceHint.textContent = error?.message ?? String(error); }
+  catch (error) { if (sourceHint) sourceHint.textContent = error?.message ?? String(error); }
 }
 
 focusSourceButton?.addEventListener('click', async () => {
@@ -71,17 +72,18 @@ focusSourceButton?.addEventListener('click', async () => {
     await chrome.tabs.update(targetTab.id, { active: true });
     if (Number.isInteger(targetTab.windowId)) await chrome.windows.update(targetTab.windowId, { focused: true });
   } catch (error) {
-    sourceHint.textContent = error?.message ?? String(error);
+    if (sourceHint) sourceHint.textContent = error?.message ?? String(error);
   }
 });
 
 (async () => {
+  if (!sourceName) return;
   targetTab = await getTargetTab();
   if (!targetTab?.id) throw new Error('No browser tab is bound to this Audio+ window.');
   await refresh();
   timer = setInterval(() => {
     if (document.visibilityState === 'visible') refresh();
   }, 900);
-})().catch((error) => { sourceHint.textContent = error?.message ?? String(error); });
+})().catch((error) => { if (sourceHint) sourceHint.textContent = error?.message ?? String(error); });
 
 window.addEventListener('pagehide', () => clearInterval(timer));

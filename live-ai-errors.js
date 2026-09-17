@@ -26,25 +26,38 @@ export function liveAiError(code, message, action = null, cause = null) {
 }
 
 export function normalizeLiveAiError(error) {
+  const text = String(error?.message ?? error ?? 'Unknown AI Karaoke error.');
+  const lower = text.toLowerCase();
+  if (lower.includes("reading 'session'") || lower.includes('no available backend') || lower.includes('session factory')) {
+    return { code: LIVE_AI_ERROR_CODES.WORKER_INIT_FAILED, message: 'The local AI engine could not create a session on this device.', action: 'Reload Audio+ in chrome://extensions. If this is an unpacked build, run npm install && npm run build first, then try again.' };
+  }
   if (error?.name === 'AudioPlusLiveAiError' && error.code) {
     return { code: error.code, message: error.message, action: error.action ?? null };
   }
-  const text = String(error?.message ?? error ?? 'Unknown AI Karaoke error.');
-  const lower = text.toLowerCase();
   if (lower.includes('active stream') || lower.includes('capture')) {
     return { code: LIVE_AI_ERROR_CODES.BASE_CAPTURE_MISSING, message: 'Audio+ could not reuse the tab audio stream.', action: 'Turn Audio+ off and on once, then try AI Karaoke again.' };
   }
-  if (lower.includes('rtf') || lower.includes('real-time budget') || lower.includes('cannot keep up')) {
-    return { code: LIVE_AI_ERROR_CODES.CPU_TOO_SLOW, message: 'This computer cannot run AI Karaoke in real time safely.', action: 'Use Fast Karaoke instead; it is designed for slower computers.' };
+  if (lower.includes('rtf') || lower.includes('real-time budget') || lower.includes('cannot keep up') || lower.includes('exceeds the real-time')) {
+    return {
+      code: LIVE_AI_ERROR_CODES.CPU_TOO_SLOW,
+      message: 'This computer cannot run AI Karaoke in real time safely.',
+      action: 'Use Fast Karaoke instead. For AI Karaoke, turn on Chrome hardware acceleration (WebGPU) and try again.'
+    };
   }
-  if (lower.includes('worker') && lower.includes('initial')) {
-    return { code: LIVE_AI_ERROR_CODES.WORKER_INIT_FAILED, message: 'The local AI engine could not start.', action: 'Reload Audio+ and try again. If this is an unpacked build, run npm run build first.' };
+  if (lower.includes('fetching the script') || lower.includes('worker script could not load')) {
+    return { code: LIVE_AI_ERROR_CODES.WORKER_INIT_FAILED, message: 'The local AI worker could not load.', action: 'Run npm run build, reload Audio+ in chrome://extensions, then try AI Karaoke again.' };
   }
-  if (lower.includes('model') && (lower.includes('hash') || lower.includes('invalid') || lower.includes('verify'))) {
-    return { code: LIVE_AI_ERROR_CODES.MODEL_INVALID, message: 'The local AI model failed verification.', action: 'Remove/reinstall the local model and try again.' };
+  if (lower.includes('webgpu') || lower.includes('gpu adapter') || lower.includes('no compatible webgpu') || lower.includes('no available adapter')) {
+    return { code: LIVE_AI_ERROR_CODES.WEBGPU_UNAVAILABLE, message: 'WebGPU is unavailable, and CPU fallback could not start AI Karaoke.', action: 'Turn on hardware acceleration in Chrome settings, or use Fast Karaoke on this device.' };
   }
-  if (lower.includes('model')) {
-    return { code: LIVE_AI_ERROR_CODES.MODEL_MISSING, message: 'The local AI model is not ready.', action: 'Keep the internet connection available for the first model install, then try again.' };
+  if (lower.includes('worker is not initialized')) {
+    return { code: LIVE_AI_ERROR_CODES.WORKER_INIT_FAILED, message: 'AI Karaoke started before the local model finished loading.', action: 'Turn AI Karaoke off, wait a few seconds, then try again. If it keeps failing, reload Audio+ in chrome://extensions.' };
+  }
+  if (lower.includes('sha-256') || lower.includes('integrity') || lower.includes('verification') || (lower.includes('expected') && lower.includes('bytes'))) {
+    return { code: LIVE_AI_ERROR_CODES.MODEL_INVALID, message: text, action: 'Reload Audio+ in chrome://extensions (do not Range-download the model), keep UVR-MDX-NET-Inst_HQ_3.onnx in the folder, then try again.' };
+  }
+  if (lower.includes('.onnx') || lower.includes('packaged ai model') || lower.includes('model was not received') || lower.includes('not installed locally')) {
+    return { code: LIVE_AI_ERROR_CODES.MODEL_MISSING, message: text, action: 'Keep UVR-MDX-NET-Inst_HQ_3.onnx in the Audio+ folder, reload the extension, then try again.' };
   }
   if (lower.includes('ring buffer') || lower.includes('hard limit')) {
     return { code: LIVE_AI_ERROR_CODES.BUFFER_LIMIT, message: 'AI Karaoke stopped before audio latency could grow too large.', action: 'Use Fast Karaoke on this device.' };

@@ -1,4 +1,5 @@
 import { MDX_INST_HQ3, mdxChunkSize, mdxGenerationSize } from './mdx-profile.js';
+import { loadPackagedModelBytes } from './live-ai-model-store.js';
 
 const MAX_RTF = 1.0;
 const GOOD_RTF = 0.6;
@@ -57,7 +58,8 @@ class StereoRingBuffer {
 
 function waitForWorkerReady(worker) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => finishReject(new Error('AI worker initialization timed out.')), 30000);
+    // Packaged ONNX load + session create can take well over 30s on CPU/WASM.
+    const timeout = setTimeout(() => finishReject(new Error('AI worker initialization timed out.')), 180000);
 
     const cleanup = () => {
       clearTimeout(timeout);
@@ -68,7 +70,13 @@ function waitForWorkerReady(worker) {
       cleanup();
       reject(error);
     };
-    const onError = (event) => finishReject(new Error(event?.message ?? 'AI worker failed to load.'));
+    const onError = (event) => {
+      const detail = event?.error?.message ?? event?.message ?? 'AI worker failed to load.';
+      const filename = event?.filename ? ` (${event.filename})` : '';
+      finishReject(new Error(/fetching the script/i.test(detail)
+        ? `The local AI worker script could not load${filename}. Reload Audio+ after npm run build.`
+        : `${detail}${filename}`));
+    };
     const onMessage = (event) => {
       const message = event.data ?? {};
       if (message.type === 'READY') {
@@ -149,13 +157,26 @@ async function failToFallback(state, reason) {
 export async function startLiveAi({ stream, onStatus = () => {}, muteBase = async () => {}, restoreBase = async () => {} } = {}) {
   if (!stream) throw new Error('Live AI Karaoke requires a captured tab stream.');
 
+  // Load the ~67 MB ONNX in the offscreen page (has chrome.runtime). Module workers
+  // often cannot fetch large extension resources reliably on their own.
+  onStatus({ active: true, phase: 'warming', reason: 'Loading local AI model…', rtf: null, quality: 'warming', backend: null });
+  const modelBytes = await loadPackagedModelBytes();
+
   const aiContext = new AudioContext({ sampleRate: MDX_INST_HQ3.sampleRate, latencyHint: 'playback' });
   if (aiContext.state === 'suspended') await aiContext.resume();
 
-  const worker = new Worker(chrome.runtime.getURL('dist/live-ai-worker.js'));
+  await aiContext.audioWorklet.addModule(chrome.runtime.getURL('live-ai-capture-worklet.js'));
+
+  const worker = new Worker(chrome.runtime.getURL('dist/live-ai-worker.js'), { type: 'module' });
   const ring = new StereoRingBuffer(RING_CAPACITY_SAMPLES);
   const captureSource = aiContext.createMediaStreamSource(stream);
-  const script = aiContext.createScriptProcessor(4096, 2, 2);
+  const captureNode = new AudioWorkletNode(aiContext, 'live-ai-capture', {
+    numberOfInputs: 1,
+    numberOfOutputs: 1,
+    outputChannelCount: [2],
+    channelCount: 2,
+    channelCountMode: 'explicit'
+  });
   const silentGain = aiContext.createGain();
   const outputGain = aiContext.createGain();
   const limiter = aiContext.createDynamicsCompressor();
@@ -167,8 +188,10 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
   limiter.attack.value = 0.003;
   limiter.release.value = 0.12;
 
-  captureSource.connect(script);
-  script.connect(silentGain);
+  // Keep the graph wired, but only accept capture frames after the worker is READY.
+  // Starting ScriptProcessor/Worklet fill before INIT caused "worker is not initialized".
+  captureSource.connect(captureNode);
+  captureNode.connect(silentGain);
   silentGain.connect(aiContext.destination);
   outputGain.connect(limiter);
   limiter.connect(aiContext.destination);
@@ -179,7 +202,7 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
     worker,
     ring,
     captureSource,
-    script,
+    captureNode,
     silentGain,
     outputGain,
     limiter,
@@ -188,6 +211,7 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
     inferenceTimer: null,
     sequence: 0,
     firstChunkAccepted: false,
+    captureArmed: false,
     baseMuted: false,
     nextPlaybackTime: 0,
     lastRtf: null,
@@ -245,10 +269,11 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
     }
   });
 
-  script.onaudioprocess = (event) => {
-    if (state.stopped) return;
-    const left = event.inputBuffer.getChannelData(0);
-    const right = event.inputBuffer.numberOfChannels > 1 ? event.inputBuffer.getChannelData(1) : left;
+  captureNode.port.onmessage = (event) => {
+    if (state.stopped || !state.captureArmed) return;
+    const left = event.data?.left;
+    const right = event.data?.right;
+    if (!(left instanceof Float32Array) || !(right instanceof Float32Array)) return;
     if (!ring.push(left, right)) {
       failToFallback(state, 'Live AI ring buffer reached its hard limit; falling back before memory/latency can grow.').catch(console.error);
       return;
@@ -257,11 +282,19 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
   };
 
   const readyPromise = waitForWorkerReady(worker);
-  worker.postMessage({ type: 'INIT', runtimePath: chrome.runtime.getURL('vendor/ort/') });
+  // Transfer a copy so a failed worker cannot leave us with a detached buffer on retry paths.
+  const transferable = modelBytes.slice(0);
+  worker.postMessage({
+    type: 'INIT',
+    runtimePath: chrome.runtime.getURL('vendor/ort/'),
+    modelUrl: chrome.runtime.getURL(MDX_INST_HQ3.fileName),
+    modelBytes: transferable
+  }, [transferable]);
 
   try {
     const ready = await readyPromise;
     state.backend = ready.backend ?? null;
+    state.captureArmed = true;
     state.status = {
       ...state.status,
       phase: 'buffering',
@@ -281,7 +314,8 @@ export async function stopLiveAi(state, { restoreBase = true, preserveStatus = f
   state.stopped = true;
   clearInferenceWatchdog(state);
 
-  try { state.script.onaudioprocess = null; } catch {}
+  state.captureArmed = false;
+  try { if (state.captureNode?.port) state.captureNode.port.onmessage = null; } catch {}
   for (const source of state.playbackSources) {
     try { source.stop(); } catch {}
   }
@@ -289,8 +323,8 @@ export async function stopLiveAi(state, { restoreBase = true, preserveStatus = f
   for (const track of state.stream.getTracks()) {
     try { track.stop(); } catch {}
   }
-  for (const node of [state.captureSource, state.script, state.silentGain, state.outputGain, state.limiter]) {
-    try { node.disconnect(); } catch {}
+  for (const node of [state.captureSource, state.captureNode, state.silentGain, state.outputGain, state.limiter]) {
+    try { node?.disconnect(); } catch {}
   }
   try { state.worker.postMessage({ type: 'DISPOSE' }); } catch {}
   try { state.worker.terminate(); } catch {}

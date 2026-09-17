@@ -61,26 +61,33 @@ test('toolbar action opens native side panel synchronously and remembers the sel
   assert.doesNotMatch(selectTargetBody,/sidePanel\.open|sidePanel\.setOptions/);
   assert.match(worker,/audioPlus\.sidePanelTarget\./);
   assert.doesNotMatch(worker,/chrome\.windows\.create/); assert.doesNotMatch(worker,/type: 'popup'/);
-  assert.match(panel,/id="sourceName"/); assert.match(panel,/id="audibleTabsBadge"/); assert.match(panel,/id="sessionsBadge"/);
+  assert.match(panel,/id="spectrumBars"/); assert.match(panel,/id="toneHeading"/);
   assert.match(target,/PANEL_TARGET_PREFIX/); assert.match(target,/chrome\.storage\.session\.get/); assert.match(target,/chrome\.tabs\.get/);
 });
 
-test('persona-first home gives three plain-language one-click goals', async () => {
-  const panel=await read('sidepanel.html'); const actions=await read('persona-actions.js');
-  assert.match(panel,/What do you want right now\?/);
-  assert.match(panel,/data-experience="karaoke"/); assert.match(panel,/Karaoke Night/);
-  assert.match(panel,/data-experience="voices"/); assert.match(panel,/Clear Voices/);
-  assert.match(panel,/data-experience="better-sound"/); assert.match(panel,/Make It Sound Better/);
-  assert.match(actions,/vocalReduction: 82/); assert.match(actions,/dialogueBoost: 70/); assert.match(actions,/nightMode: 'light'/); assert.match(actions,/RUN_SMART_FIX/);
+test('side panel is an equalizer with karaoke, not a goal picker', async () => {
+  const panel=await read('sidepanel.html'); const js=await read('popup.js');
+  assert.match(panel,/Equalizer with karaoke/);
+  assert.doesNotMatch(panel,/Start here/); assert.doesNotMatch(panel,/What do you want right now/);
+  assert.doesNotMatch(panel,/You're controlling/); assert.doesNotMatch(panel,/Current browser tab/);
+  assert.match(panel,/id="toneHeading">Tone</); assert.match(panel,/id="spectrumHeading">Live spectrum</);
+  assert.ok(panel.indexOf('id="spectrumPanel"') < panel.indexOf('id="toneZone"'));
+  assert.ok(panel.indexOf('id="toneZone"') < panel.indexOf('id="karaokeZone"'));
+  assert.doesNotMatch(panel,/<details class="mini-details tone-details">/);
+  assert.match(js,/data-spectrum-always-on/);
 });
 
-test('persona layout keeps novice goals above technical tools', async () => {
+test('equalizer layout keeps spectrum and tone above karaoke', async () => {
   const panel=await read('sidepanel.html');
-  assert.ok(panel.indexOf('intent-hero') < panel.indexOf('karaokeZone'));
-  assert.ok(panel.indexOf('karaokeZone') < panel.indexOf('clarityZone'));
-  assert.ok(panel.indexOf('clarityZone') < panel.indexOf('soundZone'));
-  assert.ok(panel.indexOf('soundZone') < panel.indexOf('advancedPanel'));
-  assert.match(panel,/Power user tools/); assert.match(panel,/Analyzer · 10-band EQ · preamp · diagnostics/);
+  assert.ok(panel.indexOf('spectrumPanel') < panel.indexOf('karaokeZone'));
+  assert.ok(panel.indexOf('toneZone') < panel.indexOf('karaokeZone'));
+  assert.ok(panel.indexOf('karaokeZone') < panel.indexOf('advancedPanel'));
+  assert.match(panel,/id="karaokeZoneHeading">Karaoke</);
+  assert.match(panel,/>10-band EQ</);
+  assert.match(panel,/<details class="section fold"/);
+  assert.match(panel,/class="help-tip"/);
+  assert.match(panel,/About Live spectrum/);
+  assert.match(panel,/About Karaoke/);
 });
 
 test('native side panel reloads when the toolbar selects another source tab', async () => {
@@ -89,16 +96,23 @@ test('native side panel reloads when the toolbar selects another source tab', as
   assert.match(panel,/sidepanel-target-sync\.js/); assert.match(panel,/sidepanel\.css/);
 });
 
+test('Enable Audio+ still works when siteLabel is absent from side panel HTML', async () => {
+  const js=await read('popup.js'); const panel=await read('sidepanel.html'); const popup=await read('popup.html');
+  assert.doesNotMatch(panel,/id="siteLabel"/); assert.doesNotMatch(popup,/id="siteLabel"/);
+  assert.match(js,/if \(els\.siteLabel\) els\.siteLabel\.textContent/);
+  assert.match(js,/UI refresh failed before enable/);
+});
+
 test('Fast Karaoke has a real Off control in side panel', async () => {
   const panel=await read('sidepanel.html'); const controller=await read('popup.js');
   assert.match(panel,/data-vocal-preset="0"[^>]*>Off</); assert.match(controller,/Fast Karaoke off/);
 });
 
-test('side panel uses responsive full-width persona layout', async () => {
+test('side panel uses responsive full-width equalizer layout', async () => {
   const css=await read('sidepanel.css'); const base=await read('control-window.css');
   assert.match(css,/\.panel, \.control-window \{ width: 100%/); assert.match(css,/@media \(max-width: 360px\)/);
-  assert.match(css,/\.intent-grid/); assert.match(css,/\.persona-zone/); assert.match(css,/\.power-strip/);
-  assert.match(base,/\.source-card/); assert.match(base,/\.primary-feature/);
+  assert.match(css,/\.spectrum-zone/); assert.match(css,/\.persona-zone/); assert.match(css,/\.power-strip/);
+  assert.match(base,/\.primary-feature/);
 });
 
 test('peak protection and stable V2 processing graph remain intact', async () => {

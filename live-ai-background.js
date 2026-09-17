@@ -84,13 +84,20 @@ async function startLive(tabId) {
     originalSettings: sanitizeSettings(state)
   });
 
-  if (!response?.ok) {
-    const error = liveAiError(
-      response?.errorCode ?? LIVE_AI_ERROR_CODES.UNKNOWN,
-      response?.error ?? 'Could not start Live AI Karaoke.',
-      response?.action ?? 'Keep normal Audio+ enabled and try again.'
+  if (!response) {
+    throw liveAiError(
+      LIVE_AI_ERROR_CODES.WORKER_INIT_FAILED,
+      'The AI Karaoke processor did not answer the start request.',
+      'Reload Audio+ in chrome://extensions, turn Audio+ off and on for this tab, then try again.'
     );
-    throw error;
+  }
+
+  if (!response.ok) {
+    throw liveAiError(
+      response.errorCode ?? LIVE_AI_ERROR_CODES.UNKNOWN,
+      response.error ?? 'Could not start Live AI Karaoke.',
+      response.action ?? 'Keep normal Audio+ enabled and try again.'
+    );
   }
 }
 
@@ -113,6 +120,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       await writeLiveState(message.tabId, liveAiStatusFromError(error)).catch(() => {});
     });
     return;
+  }
+
+  if (message.type === 'LIVE_AI_STATUS' && message.tabId != null) {
+    writeLiveState(message.tabId, message.status ?? {}).then(() => sendResponse({ ok: true })).catch((error) => {
+      sendResponse({ ok: false, error: error?.message ?? String(error) });
+    });
+    return true;
   }
 
   if (message.type === 'OFFSCREEN_STATUS' && message.tabId != null && message.enabled === false) {

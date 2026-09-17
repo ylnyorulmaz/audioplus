@@ -1,12 +1,12 @@
 import { sanitizeSettings } from './audio-settings.js';
 import { MDX_INST_HQ3 } from './mdx-profile.js';
-import { getInstalledLiveAiModel, installLiveAiModel } from './live-ai-model-store.js';
+import { getInstalledLiveAiModel } from './live-ai-model-store.js';
 import { normalizeLiveAiError } from './live-ai-errors.js';
 import { getTargetTab } from './target-tab.js';
 
-const MODEL_URL = 'https://huggingface.co/seanghay/uvr_models/resolve/main/UVR-MDX-NET-Inst_HQ_3.onnx?download=true';
 const button = document.querySelector('#liveAiButton');
 const status = document.querySelector('#liveAiStatus');
+const compact = Boolean(document.querySelector('.eq-shell'));
 
 let activeTab = null;
 let busy = false;
@@ -24,7 +24,6 @@ function setStatus(text, tone = '') {
   status.textContent = text;
   status.dataset.tone = tone;
 }
-function humanMb(bytes) { return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
 function engineLabel(backend) {
   if (backend === 'webgpu') return 'WebGPU';
   if (backend === 'wasm') return 'CPU/WASM';
@@ -36,11 +35,6 @@ function actionableErrorText(value) {
     : normalizeLiveAiError(value);
   const suffix = detail.action ? ` ${detail.action}` : '';
   return `${detail.message}${suffix}`.trim();
-}
-
-async function sha256Hex(buffer) {
-  const digest = await crypto.subtle.digest('SHA-256', buffer);
-  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, '0')).join('');
 }
 
 async function readLiveState() {
@@ -69,18 +63,22 @@ function describe(state) {
     return `AI Karaoke ON${engine ? ` · ${engine}` : ''}${rtf}`;
   }
   if (state.phase === 'fallback') {
-    const prefix = state.backend === 'wasm' ? 'This computer could not keep AI Karaoke real-time safely.' : 'AI Karaoke stopped safely.';
+    const prefix = 'AI Karaoke needs a faster local engine than this tab has right now.';
     return `${prefix} Normal Audio+ is back. ${state.reason ?? ''} ${state.action ?? ''}`.trim();
   }
   if (state.phase === 'error') return `AI Karaoke could not start. ${actionableErrorText(state)}`;
-  return 'Ready. First use installs the local AI model automatically. GPU is preferred; CPU fallback is automatic.';
+  return compact
+    ? 'Needs WebGPU for real-time; otherwise use Fast Karaoke.'
+    : 'Ready. Needs WebGPU for real-time Inst HQ_3; CPU is only used if it can keep up. Fast Karaoke works on any PC.';
 }
 
 function render(state) {
   if (!button) return;
   const active = isActive(state);
   button.dataset.active = String(active);
-  button.textContent = active ? 'Turn AI Karaoke Off' : 'Try AI Karaoke';
+  button.textContent = active
+    ? (compact ? 'Stop AI Karaoke' : 'Turn AI Karaoke Off')
+    : (compact ? 'AI Karaoke' : 'Try AI Karaoke');
   button.disabled = busy || !activeTab?.id;
   if (!busy) {
     const tone = state.phase === 'live' ? (state.quality === 'good' ? 'success' : 'warning') : ['fallback', 'error'].includes(state.phase) ? 'warning' : '';
@@ -92,41 +90,10 @@ async function downloadVerifiedModel() {
   const installed = await getInstalledLiveAiModel({ includeBytes: false });
   if (installed?.sha256 === MDX_INST_HQ3.sha256) return installed;
 
-  setStatus(`First use: downloading ${MDX_INST_HQ3.displayName} (~67 MB)…`, '');
-  const response = await fetch(MODEL_URL, { cache: 'force-cache' });
-  if (!response.ok) throw new Error(`AI model download failed (${response.status}). Check your connection and try again.`);
-
-  const total = Number(response.headers.get('content-length')) || 0;
-  if (!response.body) {
-    const buffer = await response.arrayBuffer();
-    return verifyAndInstall(buffer);
-  }
-
-  const reader = response.body.getReader();
-  const chunks = [];
-  let received = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.byteLength;
-    if (total > 0) setStatus(`Installing AI model… ${Math.min(100, Math.round(received / total * 100))}% (${humanMb(received)})`);
-    else setStatus(`Installing AI model… ${humanMb(received)} downloaded`);
-  }
-
-  const merged = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.byteLength; }
-  return verifyAndInstall(merged.buffer);
-}
-
-async function verifyAndInstall(buffer) {
-  setStatus('Verifying AI model…');
-  const hash = await sha256Hex(buffer);
-  if (hash !== MDX_INST_HQ3.sha256) throw new Error('Downloaded AI model failed integrity verification. Nothing was installed.');
-  await installLiveAiModel(buffer, { fileName: MDX_INST_HQ3.fileName, size: buffer.byteLength, sha256: hash });
-  setStatus('AI model installed locally. Starting Karaoke…', 'success');
-  return getInstalledLiveAiModel({ includeBytes: false });
+  // Do not Range-probe the packaged ONNX — that can poison Chrome's cache and make the
+  // later full-file load return only 1 byte. Presence is verified when offscreen loads it.
+  setStatus('Using packaged AI model…');
+  return { sha256: MDX_INST_HQ3.sha256, fileName: MDX_INST_HQ3.fileName, packaged: true };
 }
 
 async function ensureBaseAudio() {
@@ -185,7 +152,7 @@ button?.addEventListener('click', async () => {
     setStatus(actionableErrorText(error), 'error');
     button.disabled = false;
     button.dataset.active = 'false';
-    button.textContent = 'Try AI Karaoke';
+    button.textContent = compact ? 'AI Karaoke' : 'Try AI Karaoke';
   }
 });
 

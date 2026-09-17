@@ -193,7 +193,8 @@ async function disableSiteProfile(siteKey) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (!message || message.target === 'offscreen') return;
+  if (!message || message.target === 'offscreen' || message.target === 'live-offscreen') return;
+  if (message.type === 'START_LIVE_AI_REQUEST' || message.type === 'STOP_LIVE_AI_REQUEST' || message.type === 'LIVE_AI_STATUS') return;
 
   (async () => {
     switch (message.type) {

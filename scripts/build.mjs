@@ -26,7 +26,9 @@ await build({
 await build({
   entryPoints: ['live-ai-worker-entry.js'],
   bundle: true,
-  format: 'iife',
+  // ESM keeps a real import.meta.url so ORT can resolve packaged WASM without
+  // spawning a broken nested classic/module Worker inside Chrome extensions.
+  format: 'esm',
   platform: 'browser',
   target: ['chrome116'],
   outfile: join(distDir, 'live-ai-worker.js'),

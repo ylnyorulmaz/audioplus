@@ -1,5 +1,5 @@
 import * as ort from 'onnxruntime-web/webgpu';
-import { getInstalledLiveAiModel } from './live-ai-model-store.js';
+import { coerceModelBytes, fetchPackagedModelBuffer, getInstalledLiveAiModel } from './live-ai-model-store.js';
 import { MDX_INST_HQ3, mdxGenerationSize, mdxTrim, validateMdxMetadata } from './mdx-profile.js';
 import { MdxStft } from './mdx-stft.js';
 
@@ -29,53 +29,142 @@ function disposeOutputs(outputs) {
   }
 }
 
+async function probeWebGpuAdapter() {
+  const gpu = globalThis.navigator?.gpu;
+  if (!gpu?.requestAdapter) {
+    webgpuFallbackReason = 'WebGPU is not exposed by this browser/device.';
+    return null;
+  }
+  try {
+    const adapter =
+      (await gpu.requestAdapter({ powerPreference: 'high-performance' })) ??
+      (await gpu.requestAdapter());
+    if (!adapter) {
+      webgpuFallbackReason = 'No compatible WebGPU adapter was returned.';
+      return null;
+    }
+    return adapter;
+  } catch (error) {
+    webgpuFallbackReason = errorMessage(error);
+    return null;
+  }
+}
+
+async function createOnnxSession(modelBytes, executionProvider) {
+  if (typeof ort?.InferenceSession?.create !== 'function') {
+    throw new Error('ONNX Runtime InferenceSession.create is not available in the AI worker.');
+  }
+  const created = await ort.InferenceSession.create(modelBytes, {
+    executionProviders: [executionProvider],
+    graphOptimizationLevel: 'all'
+  });
+  if (!created) throw new Error(`${executionProvider} session factory returned no session.`);
+  return created;
+}
+
 async function createInferenceSession(modelBytes) {
   webgpuFallbackReason = null;
+  const adapter = await probeWebGpuAdapter();
 
-  if (globalThis.navigator?.gpu) {
+  if (adapter) {
     try {
-      const gpuSession = await ort.InferenceSession.create(modelBytes, {
-        executionProviders: ['webgpu'],
-        graphOptimizationLevel: 'all'
-      });
-      return { session: gpuSession, backend: 'webgpu' };
+      return { session: await createOnnxSession(modelBytes, 'webgpu'), backend: 'webgpu' };
     } catch (error) {
       webgpuFallbackReason = errorMessage(error);
     }
-  } else {
-    webgpuFallbackReason = 'WebGPU is not exposed by this browser/device.';
   }
 
   try {
-    const cpuSession = await ort.InferenceSession.create(modelBytes, {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all'
-    });
-    return { session: cpuSession, backend: 'wasm' };
+    return { session: await createOnnxSession(modelBytes, 'wasm'), backend: 'wasm' };
   } catch (error) {
     const gpuDetail = webgpuFallbackReason ? ` WebGPU: ${webgpuFallbackReason}` : '';
     throw new Error(`Could not initialize local AI on WebGPU or WASM/CPU.${gpuDetail} CPU: ${errorMessage(error)}`);
   }
 }
 
-async function init(runtimePath) {
+async function init(runtimePath, modelUrl = null, transferredModelBytes = null) {
   if (session) return;
-  ort.env.wasm.wasmPaths = runtimePath;
-  // This worker already isolates inference from the UI. Keep CPU fallback single-threaded
-  // so an old/weak laptop cannot fan out across every core and make Chrome unresponsive.
+  if (!ort?.env) throw new Error('ONNX Runtime did not expose an environment in the AI worker.');
+  ort.env.wasm = ort.env.wasm ?? {};
+  ort.env.webgpu = ort.env.webgpu ?? {};
+  ort.env.wasm.proxy = false;
+  // Keep CPU fallback single-threaded. Nested ORT pthread/module workers are unreliable
+  // inside Chrome extension workers and surface as "fetching the script".
   ort.env.wasm.numThreads = 1;
 
-  const installed = await getInstalledLiveAiModel();
-  if (!installed?.bytes) throw new Error('The verified UVR-MDX-NET-Inst_HQ_3 model is not installed locally.');
-  if (installed.sha256 !== MDX_INST_HQ3.sha256) throw new Error('Installed AI model metadata does not match UVR-MDX-NET-Inst_HQ_3.');
-  const hash = await sha256Hex(installed.bytes);
+  const wasmBase = runtimePath?.endsWith('/') ? runtimePath : `${runtimePath ?? ''}/`;
+  const wasmFile = 'ort-wasm-simd-threaded.asyncify.wasm';
+  const wasmResponse = await fetch(new URL(wasmFile, wasmBase).href, { cache: 'force-cache' });
+  if (!wasmResponse.ok) {
+    throw new Error(`Missing ${wasmFile} in vendor/ort. Run npm install && npm run build, then reload Audio+.`);
+  }
+  ort.env.wasm.wasmBinary = await wasmResponse.arrayBuffer();
+  // Avoid string wasmPaths: that makes ORT dynamic-import a second asyncify module which
+  // tries to spawn nested module workers (broken in extension workers).
+  delete ort.env.wasm.wasmPaths;
+
+  let modelBytes = coerceModelBytes(transferredModelBytes);
+  if (!modelBytes) modelBytes = await fetchPackagedModelBuffer(modelUrl);
+  if (!modelBytes) {
+    const installed = await getInstalledLiveAiModel();
+    modelBytes = coerceModelBytes(installed?.bytes);
+    if (modelBytes && installed.sha256 !== MDX_INST_HQ3.sha256) modelBytes = null;
+  }
+  if (!modelBytes) {
+    throw new Error(
+      `The verified UVR-MDX-NET-Inst_HQ_3 model was not received by the AI worker ` +
+      `(got ${transferredModelBytes == null ? 'null' : typeof transferredModelBytes}).`
+    );
+  }
+  if (modelBytes.byteLength !== MDX_INST_HQ3.expectedByteLength) {
+    throw new Error(
+      `AI worker received ${modelBytes.byteLength} model bytes, expected ${MDX_INST_HQ3.expectedByteLength}.`
+    );
+  }
+  const hash = await sha256Hex(modelBytes);
   if (hash !== MDX_INST_HQ3.sha256) throw new Error('Installed AI model bytes failed SHA-256 verification. Reinstall the model.');
 
-  const created = await createInferenceSession(new Uint8Array(installed.bytes));
+  const created = await createInferenceSession(new Uint8Array(modelBytes));
+  if (!created?.session || !created.backend) {
+    throw new Error(`Local AI session factory returned an incomplete result (${created?.backend ?? 'no backend'}).`);
+  }
   session = created.session;
   backend = created.backend;
   modelContract = validateMdxMetadata(session, MDX_INST_HQ3);
   stft = new MdxStft(MDX_INST_HQ3);
+
+  // One silent inference measures RTF before we touch live audio.
+  // Inst HQ_3 on single-thread WASM is usually >1× and cannot stay live safely.
+  const probe = await measureRealtimeProbe();
+  if (probe.rtf > 1.0) {
+    const engine = backend === 'webgpu' ? 'WebGPU' : 'CPU/WASM';
+    const gpuNote = webgpuFallbackReason ? ` WebGPU unavailable (${webgpuFallbackReason}).` : '';
+    const detail =
+      `${engine} probe RTF ${probe.rtf.toFixed(2)}× exceeds the real-time budget ` +
+      `(need ≤ 1.00×).${gpuNote} Use Fast Karaoke on this device, or enable Chrome hardware acceleration and retry AI Karaoke.`;
+    await dispose();
+    throw new Error(detail);
+  }
+}
+
+async function measureRealtimeProbe() {
+  const chunkSize = MDX_INST_HQ3.hopLength * (MDX_INST_HQ3.dimT - 1);
+  const generationSize = mdxGenerationSize(MDX_INST_HQ3);
+  const left = new Float32Array(chunkSize);
+  const right = new Float32Array(chunkSize);
+  const features = stft.forwardStereo(left, right);
+  const tensor = new ort.Tensor('float32', features, MDX_INST_HQ3.expectedInputShape);
+  const started = performance.now();
+  let outputs;
+  try {
+    outputs = await session.run({ [modelContract.inputName]: tensor });
+  } finally {
+    tensor.dispose?.();
+    disposeOutputs(outputs);
+  }
+  const elapsedMs = performance.now() - started;
+  const audioMs = generationSize / MDX_INST_HQ3.sampleRate * 1000;
+  return { rtf: elapsedMs / audioMs, elapsedMs, audioMs };
 }
 
 async function processChunk(left, right, sequence) {
@@ -136,7 +225,7 @@ globalThis.onmessage = (event) => {
   const message = event.data ?? {};
   (async () => {
     if (message.type === 'INIT') {
-      await init(message.runtimePath);
+      await init(message.runtimePath, message.modelUrl ?? null, message.modelBytes ?? null);
       post('READY', {
         backend,
         webgpuFallbackReason,

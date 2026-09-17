@@ -7,20 +7,38 @@ const LIVE_PREFIX = 'audioPlus.liveAi.';
 function liveStateKey(tabId) { return `${LIVE_PREFIX}${tabId}`; }
 
 async function writeStatus(tabId, status) {
-  await chrome.storage.session.set({
-    [liveStateKey(tabId)]: {
-      ...status,
-      limits: LIVE_AI_LIMITS,
-      updatedAt: Date.now()
-    }
-  });
+  const payload = {
+    ...status,
+    limits: LIVE_AI_LIMITS,
+    updatedAt: Date.now()
+  };
+  const response = await chrome.runtime.sendMessage({ type: 'LIVE_AI_STATUS', tabId, status: payload });
+  if (response?.ok) return;
+
+  const area = chrome.storage?.session;
+  if (area?.set) {
+    await area.set({ [liveStateKey(tabId)]: payload });
+    return;
+  }
+
+  throw liveAiError(
+    LIVE_AI_ERROR_CODES.WORKER_INIT_FAILED,
+    response?.error ?? 'Audio+ could not store AI Karaoke status from the audio processor.',
+    'Reload Audio+ in chrome://extensions, then try AI Karaoke again.'
+  );
 }
 
 async function assertLiveRuntimePackaged() {
-  const workerUrl = chrome.runtime.getURL('dist/live-ai-worker.js');
+  // Do not Range-probe the ONNX here — Chrome can cache the partial response and break the full load.
+  const required = [
+    'dist/live-ai-worker.js',
+    'vendor/ort/ort-wasm-simd-threaded.asyncify.wasm'
+  ];
   try {
-    const response = await fetch(workerUrl, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    for (const path of required) {
+      const response = await fetch(chrome.runtime.getURL(path), { cache: 'no-store' });
+      if (!response.ok) throw new Error(`${path} HTTP ${response.status}`);
+    }
   } catch (cause) {
     throw liveAiError(
       LIVE_AI_ERROR_CODES.RUNTIME_MISSING,
@@ -121,7 +139,11 @@ async function startController(tabId, originalSettings) {
   } catch (error) {
     if (stream) for (const track of stream.getTracks()) track.stop();
     const detail = liveAiStatusFromError(error);
-    await writeStatus(tabId, { ...detail, rtf: null });
+    try {
+      await writeStatus(tabId, { ...detail, rtf: null });
+    } catch (statusError) {
+      console.error('[Audio+] could not persist AI Karaoke error', statusError);
+    }
     return { ok: false, error: detail.reason, errorCode: detail.errorCode, action: detail.action };
   }
 }

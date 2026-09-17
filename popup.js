@@ -48,6 +48,7 @@ let updateChain = Promise.resolve();
 let spectrumPolling = false;
 const eqControls = [];
 const presetButtons = new Map();
+const compact = Boolean(document.querySelector('.eq-shell'));
 
 function siteKeyFromUrl(url) {
   try {
@@ -150,23 +151,32 @@ function renderSmartFix() {
   els.smartFixButton.disabled = smartFixBusy;
   els.clearSmartFixButton.hidden = !state.smartFixEnabled;
   if (smartFixBusy) { els.smartFixButton.textContent = 'Analyzing…'; els.smartFixResult.textContent = 'Listening locally for about a second…'; return; }
-  els.smartFixButton.textContent = state.smartFixEnabled ? '✦ RE-RUN SMART FIX' : '✦ FIX THIS AUDIO';
+  els.smartFixButton.textContent = compact
+    ? (state.smartFixEnabled ? 'Re-run auto-fix' : 'Auto-fix')
+    : (state.smartFixEnabled ? '✦ RE-RUN SMART FIX' : '✦ FIX THIS AUDIO');
   const result = state.smartFixResult;
   if (result) {
     const issues = result.issues?.length ? result.issues.slice(0, 3).map((item) => `${item.label} ${item.score}`).join(' · ') : 'No major tonal imbalance';
     els.smartFixResult.textContent = issues;
   } else {
-    els.smartFixResult.textContent = state.smartFixEnabled ? 'Smart Fix is active.' : 'Enable Audio+, play audio, then run Smart Fix.';
+    els.smartFixResult.textContent = state.smartFixEnabled
+      ? 'Smart Fix is active.'
+      : (compact ? 'Play something, then tap auto-fix.' : 'Enable Audio+, play audio, then run Smart Fix.');
   }
 }
 function render() {
   state = { ...state, ...sanitizeSettings(state) };
-  els.siteLabel.textContent = formatHost(activeTab?.url ?? '');
+  if (els.siteLabel) els.siteLabel.textContent = formatHost(activeTab?.url ?? '');
   els.statusPill.textContent = state.enabled ? 'ON' : 'OFF';
   els.statusPill.classList.toggle('status-on', state.enabled); els.statusPill.classList.toggle('status-off', !state.enabled);
-  els.powerButton.textContent = state.enabled ? 'Disable Audio+' : 'Enable Audio+';
+  els.powerButton.textContent = state.enabled ? (compact ? 'Turn off' : 'Disable Audio+') : (compact ? 'Turn on' : 'Enable Audio+');
+  els.powerButton.dataset.enabled = String(state.enabled);
   els.powerButton.disabled = busy || !isCapturable(activeTab);
-  els.powerHint.textContent = !isCapturable(activeTab) ? 'Select a normal web tab such as YouTube or Spotify.' : state.enabled ? 'Processing this tab. Controls update live.' : 'Enable processing for this tab.';
+  els.powerHint.textContent = !isCapturable(activeTab)
+    ? (compact ? 'Open a normal tab like YouTube.' : 'Select a normal web tab such as YouTube or Spotify.')
+    : state.enabled
+      ? (compact ? 'Listening. Move the sliders.' : 'Processing this tab. Controls update live.')
+      : (compact ? 'Turn on to hear EQ and karaoke.' : 'Enable processing for this tab.');
 
   for (const [key, slider, output] of [
     ['bassDb', els.bassSlider, els.bassValue], ['midDb', els.midSlider, els.midValue], ['trebleDb', els.trebleSlider, els.trebleValue], ['preampDb', els.preampSlider, els.preampValue]
@@ -196,21 +206,24 @@ async function refreshState() {
 }
 
 async function enableAudio() {
-  busy = true; render(); setMessage('Connecting to this tab…', 'info');
+  busy = true;
+  try { render(); } catch (error) { console.warn('[Audio+] UI refresh failed before enable', error); }
+  setMessage('Connecting to this tab…', 'info');
   try {
     const response = await send({ type: 'START_CAPTURE', tabId: activeTab.id, siteKey, settings: sanitizeSettings(state) });
     if (!response?.ok) throw new Error(response?.error ?? 'Could not start tab audio.');
-    state = response.state; setMessage('Audio+ is processing this tab.', 'success');
-  } finally { busy = false; render(); }
+    state = response.state; setMessage(compact ? 'On. Move the sliders.' : 'Audio+ is processing this tab.', 'success');
+  } finally { busy = false; try { render(); } catch (error) { console.warn('[Audio+] UI refresh failed after enable', error); } }
 }
 async function disableAudio() {
-  busy = true; render();
+  busy = true;
+  try { render(); } catch (error) { console.warn('[Audio+] UI refresh failed before disable', error); }
   try {
     await send({ type: 'STOP_LIVE_AI_REQUEST', tabId: activeTab.id }).catch(() => {});
     const response = await send({ type: 'STOP_CAPTURE', tabId: activeTab.id, siteKey });
     if (!response?.ok) throw new Error(response?.error ?? 'Could not stop Audio+.');
-    state = response.state; setMessage('Audio processing stopped.', 'info');
-  } finally { busy = false; render(); }
+    state = response.state; setMessage(compact ? 'Off.' : 'Audio processing stopped.', 'info');
+  } finally { busy = false; try { render(); } catch (error) { console.warn('[Audio+] UI refresh failed after disable', error); } }
 }
 
 function queuePatch(patch) {
@@ -310,21 +323,26 @@ els.deleteCustomPreset.addEventListener('click', async () => {
   } catch (error) { showError(error); }
 });
 
+function spectrumAlwaysVisible() {
+  return Boolean(document.querySelector('[data-spectrum-always-on]'));
+}
+
 async function pollSpectrum() {
-  if (spectrumPolling || !els.advancedPanel.open || document.visibilityState !== 'visible' || !state.enabled) return;
+  if (spectrumPolling || document.visibilityState !== 'visible' || !state.enabled) return;
+  if (!spectrumAlwaysVisible() && !els.advancedPanel?.open) return;
   spectrumPolling = true;
   try {
     const response = await send({ target: 'offscreen', type: 'GET_SPECTRUM', tabId: activeTab.id });
     if (!response?.ok || !response.active) return;
     const fills = $$('.spectrum-fill');
     fills.forEach((fill, index) => { fill.style.height = `${Math.max(2, Math.round((Number(response.spectrum?.levels?.[index]) || 0) * 100))}%`; });
-    els.spectrumStatus.textContent = 'Live';
+    els.spectrumStatus && (els.spectrumStatus.textContent = 'Live');
     const rms = Number(response.spectrum?.rmsDb), peak = Number(response.spectrum?.peakDb);
-    els.spectrumMetrics.textContent = Number.isFinite(rms) && Number.isFinite(peak) ? `Input ${rms.toFixed(1)} dB RMS · Peak ${peak.toFixed(1)} dB` : 'Live input spectrum';
-  } catch { els.spectrumStatus.textContent = 'Unavailable'; } finally { spectrumPolling = false; }
+    if (els.spectrumMetrics) els.spectrumMetrics.textContent = Number.isFinite(rms) && Number.isFinite(peak) ? `Input ${rms.toFixed(1)} dB RMS · Peak ${peak.toFixed(1)} dB` : 'Live input spectrum';
+  } catch { if (els.spectrumStatus) els.spectrumStatus.textContent = 'Unavailable'; } finally { spectrumPolling = false; }
 }
 setInterval(() => pollSpectrum(), 250);
-els.advancedPanel.addEventListener('toggle', () => pollSpectrum());
+els.advancedPanel?.addEventListener('toggle', () => pollSpectrum());
 
 els.minimizeWindowButton.addEventListener('click', async () => { const win = await chrome.windows.getCurrent(); if (win?.id) await chrome.windows.update(win.id, { state: 'minimized' }); });
 els.closeWindowButton.addEventListener('click', async () => { const win = await chrome.windows.getCurrent(); if (win?.id) await chrome.windows.remove(win.id); });

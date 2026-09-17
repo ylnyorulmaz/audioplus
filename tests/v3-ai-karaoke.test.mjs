@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { MDX_INST_HQ3, mdxChunkSize, mdxGenerationSize, mdxTrim } from '../mdx-profile.js';
+import { MDX_INST_HQ3, mdxChunkSize, mdxGenerationSize, mdxShapeMatches, mdxTrim, validateMdxMetadata } from '../mdx-profile.js';
 import { MixedRadix6144FFT } from '../mdx-stft.js';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -18,10 +18,25 @@ test('V3 pins local ONNX Runtime, mixed-radix FFT, and build tool versions', asy
 test('UVR-MDX-NET-Inst_HQ_3 profile is locked to verified parameters', () => {
   assert.equal(MDX_INST_HQ3.fileName,'UVR-MDX-NET-Inst_HQ_3.onnx');
   assert.equal(MDX_INST_HQ3.sha256,'317554b07fe1ea5279a77f2b1520a41ea4b93432560c4ffd08792c30fddf9adc');
+  assert.equal(MDX_INST_HQ3.expectedByteLength,66759214);
   assert.equal(MDX_INST_HQ3.sampleRate,44100); assert.equal(MDX_INST_HQ3.nFft,6144); assert.equal(MDX_INST_HQ3.hopLength,1024);
   assert.equal(MDX_INST_HQ3.dimF,3072); assert.equal(MDX_INST_HQ3.dimT,256); assert.equal(MDX_INST_HQ3.compensate,1.022);
   assert.deepEqual(MDX_INST_HQ3.expectedInputShape,[1,4,3072,256]); assert.deepEqual(MDX_INST_HQ3.expectedOutputShape,[1,4,3072,256]);
   assert.equal(mdxChunkSize(),261120); assert.equal(mdxTrim(),3072); assert.equal(mdxGenerationSize(),254976);
+});
+
+test('MDX metadata accepts symbolic batch_size from UVR ONNX export', () => {
+  assert.equal(mdxShapeMatches(['batch_size', 4, 3072, 256], MDX_INST_HQ3.expectedInputShape), true);
+  assert.equal(mdxShapeMatches([1, 4, 3072, 256], MDX_INST_HQ3.expectedInputShape), true);
+  assert.equal(mdxShapeMatches([-1, 4, 3072, 256], MDX_INST_HQ3.expectedInputShape), true);
+  assert.equal(mdxShapeMatches([1, 4, 3072, 128], MDX_INST_HQ3.expectedInputShape), false);
+  const contract = validateMdxMetadata({
+    inputNames: ['input'],
+    outputNames: ['output'],
+    inputMetadata: [{ name: 'input', isTensor: true, type: 'float32', shape: ['batch_size', 4, 3072, 256] }],
+    outputMetadata: [{ name: 'output', isTensor: true, type: 'float32', shape: ['batch_size', 4, 3072, 256] }]
+  });
+  assert.deepEqual(contract, { inputName: 'input', outputName: 'output' });
 });
 
 test('6144 mixed-radix FFT round-trips complex data', () => {
@@ -65,6 +80,7 @@ test('AI Lab is advanced diagnostics, not a prerequisite for normal AI Karaoke',
   const popup=await read('popup.html'); const live=await read('v3-live.js'); const lab=await read('ai-lab.html');
   assert.match(popup,/AI Karaoke/); assert.match(popup,/Advanced \/ Power user/); assert.match(popup,/Open AI diagnostics \/ local file separator/);
   assert.doesNotMatch(popup,/Install \/ verify AI model in Lab/);
-  assert.match(live,/downloadVerifiedModel/); assert.match(live,/installLiveAiModel/); assert.match(live,/START_LIVE_AI_REQUEST/);
+  assert.match(live,/downloadVerifiedModel/); assert.match(live,/START_LIVE_AI_REQUEST/);
+  assert.doesNotMatch(live,/Range: 'bytes=0-0'/);
   assert.match(lab,/UVR-MDX-NET-Inst_HQ_3/); assert.match(lab,/id="audioFile"/); assert.match(lab,/id="separateButton"/); assert.match(lab,/dist\/ai-karaoke-lab\.js/);
 });
