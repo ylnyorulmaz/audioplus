@@ -15,6 +15,16 @@ async function writeStatus(tabId, status) {
   });
 }
 
+async function assertLiveRuntimePackaged() {
+  const workerUrl = chrome.runtime.getURL('dist/live-ai-worker.js');
+  try {
+    const response = await fetch(workerUrl, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  } catch {
+    throw new Error('Live AI runtime bundle is missing. If this is an unpacked source checkout, run npm install && npm run build, then reload Audio+ in chrome://extensions. Packaged releases include this automatically.');
+  }
+}
+
 async function applyBaseSettings(tabId, settings) {
   const response = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'APPLY_SETTINGS', tabId, settings });
   if (!response?.ok) throw new Error(response?.error ?? 'Could not switch the base Audio+ graph.');
@@ -35,6 +45,7 @@ async function startController(tabId, streamId, originalSettings) {
   await stopController(tabId, { reason: 'restart' });
   let stream;
   try {
+    await assertLiveRuntimePackaged();
     stream = await navigator.mediaDevices.getUserMedia({
       audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } },
       video: false

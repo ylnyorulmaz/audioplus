@@ -1,0 +1,15 @@
+.control-window { min-width: 380px; }
+.control-header { align-items: flex-start; gap: 10px; }
+.window-actions { display: flex; align-items: center; gap: 6px; }
+.window-button { width: 28px; height: 28px; border: 1px solid #394556; border-radius: 8px; background: #171d26; color: #d6dfec; font-size: 18px; line-height: 1; cursor: pointer; }
+.window-button:hover { background: #222b38; }
+.primary-feature { border-color: #405d89; background: linear-gradient(180deg, rgba(42,62,91,.36), rgba(20,25,33,.75)); }
+.live-ai-button { width: 100%; min-height: 48px; border: 1px solid #6f87b8; border-radius: 10px; background: #1f2b40; color: #e8f1ff; font-size: 14px; font-weight: 800; cursor: pointer; }
+.live-ai-button[data-active="true"] { border-color: #8a5a5f; background: #352227; color: #ffdfe2; }
+.live-ai-button:disabled { cursor: wait; opacity: .72; }
+.live-ai-status { margin-top: 9px; padding: 9px 10px; border: 1px solid #2d3644; border-radius: 8px; background: #131820; color: #b8c2d0; font-size: 10px; line-height: 1.45; }
+.live-ai-status[data-tone="success"] { border-color: #365f45; color: #98dfad; }
+.live-ai-status[data-tone="warning"] { border-color: #695733; color: #e7c87c; }
+.live-ai-status[data-tone="error"] { border-color: #6c3e43; color: #efacb2; }
+.four-way { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.diagnostics-link { display: inline-flex; margin-top: 12px; }
