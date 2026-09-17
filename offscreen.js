@@ -15,10 +15,10 @@ const NIGHT_DYNAMICS = Object.freeze({
   light: Object.freeze({ threshold: -24, knee: 12, ratio: 3, attack: 0.012, release: 0.25 }),
   strong: Object.freeze({ threshold: -32, knee: 18, ratio: 6, attack: 0.008, release: 0.35 })
 });
-const VOCAL_LOW_CROSSOVER_HZ = 250;
-const VOCAL_HIGH_CROSSOVER_HZ = 4000;
-const VOCAL_PRESENCE_HZ = 2500;
-const VOCAL_PRESENCE_MAX_DB = 2.5;
+const VOCAL_LOW_CROSSOVER_HZ = 200;
+const VOCAL_HIGH_CROSSOVER_HZ = 5500;
+const VOCAL_PRESENCE_HZ = 3000;
+const VOCAL_PRESENCE_CUT_DB = 6;
 const ANALYSIS_SAMPLES = 12;
 const ANALYSIS_INTERVAL_MS = 110;
 const ANALYSIS_BANDS = Object.freeze({
@@ -154,7 +154,8 @@ async function stopProcessor(tabId, { notify = true } = {}) {
 
 function aggressiveVocalAmount(normalized) {
   if (normalized <= 0) return 0;
-  return Math.min(1, Math.pow(normalized, 0.72) * 1.08);
+  // Reach near-full cancel by the Karaoke preset (~80%) so vocals actually drop.
+  return Math.min(1, Math.pow(normalized, 0.55) * 1.12);
 }
 
 function applyVocalReduction(processor, settings) {
@@ -168,17 +169,17 @@ function applyVocalReduction(processor, settings) {
   smoothParam(reducer.midGain.gain, active ? 1 : 0, processor.context);
   smoothParam(reducer.highGain.gain, active ? 1 : 0, processor.context);
 
-  // Keep bass untouched when requested; mid is the main vocal kill; high cancel stays light
-  // so air/cymbals remain. Soften mid slightly at Max so stereo sides are less “dead”.
-  const lowAmount = settings.keepBass ? 0 : aggressive * 0.28;
-  const midAmount = aggressive * 0.92;
-  const highAmount = aggressive * 0.2;
+  // Mid band: full center cancel (classic L−R karaoke). High band: strong enough for
+  // sibilance. Keep Bass leaves the low band alone so kick/bass survive.
+  const lowAmount = settings.keepBass ? 0 : aggressive * 0.35;
+  const midAmount = aggressive;
+  const highAmount = aggressive * 0.55;
   setCenterReduction(reducer.lowMatrix, lowAmount, processor.context);
   setCenterReduction(reducer.midMatrix, midAmount, processor.context);
   setCenterReduction(reducer.highMatrix, highAmount, processor.context);
 
-  // Light presence restore after center cancel puts instrument body back into the mid band.
-  smoothParam(reducer.midPresence.gain, active ? aggressive * VOCAL_PRESENCE_MAX_DB : 0, processor.context);
+  // Cut vocal presence after cancel — a boost here was putting the singer back.
+  smoothParam(reducer.midPresence.gain, active ? -aggressive * VOCAL_PRESENCE_CUT_DB : 0, processor.context);
 }
 
 function applySettings(processor, incoming) {
@@ -258,7 +259,7 @@ function createVocalReducer(context, input) {
   const midPresence = context.createBiquadFilter();
   midPresence.type = 'peaking';
   midPresence.frequency.value = VOCAL_PRESENCE_HZ;
-  midPresence.Q.value = 0.9;
+  midPresence.Q.value = 1.1;
   midPresence.gain.value = 0;
   const midGain = context.createGain();
 
