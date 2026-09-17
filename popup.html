@@ -54,9 +54,18 @@
       <label class="toggle-row karaoke-bass" for="keepBassToggle"><span><strong>Keep Bass</strong><small>Leaves the center below about 180 Hz intact to protect kick and bass.</small></span><input id="keepBassToggle" type="checkbox" checked /></label>
     </section>
 
+    <section class="section live-ai-section" aria-labelledby="liveAiHeading">
+      <div class="section-title" id="liveAiHeading">Live AI Karaoke · Beta</div>
+      <button id="liveAiButton" class="live-ai-button" type="button">Start Live AI Karaoke</button>
+      <div id="liveAiStatus" class="live-ai-status" role="status" aria-live="polite">Checking local AI model…</div>
+      <p class="control-note">Runs UVR-MDX-NET-Inst_HQ_3 locally with WebGPU. The first chunk measures real-time performance. RTF &gt; 1.0×, queue underrun, or bounded-buffer overflow triggers automatic fallback to normal Audio+ audio.</p>
+      <p class="control-note">Because this MDX model needs about 5.9 seconds of context, live AI audio has a multi-second look-ahead delay. Audio-only/music use is the intended beta target; video lip-sync is not preserved.</p>
+      <a id="liveAiInstallLink" class="ai-lab-link" href="ai-lab.html" target="_blank" rel="noopener">Install / verify AI model in Lab</a>
+    </section>
+
     <section class="section ai-lab-teaser" aria-labelledby="aiLabHeading">
       <div class="section-title" id="aiLabHeading">AI Karaoke Lab · Experimental</div>
-      <p class="control-note">Prototype client-side 2-stem ONNX inference with WebGPU. This lab benchmarks local model compatibility; it does not replace Fast Karaoke playback yet.</p>
+      <p class="control-note">Verify the exact HQ3 model, benchmark WebGPU, and separate local files into Instrumental + Vocals. The verified model is stored locally for Live AI Karaoke.</p>
       <a class="ai-lab-link" href="ai-lab.html" target="_blank" rel="noopener">Open AI Karaoke Lab</a>
     </section>
 
@@ -83,11 +92,12 @@
     </details>
 
     <div class="actions"><button id="bypassButton" class="secondary" type="button" aria-pressed="false">Bypass</button><button id="resetButton" class="secondary" type="button">Reset</button></div>
-    <p id="message" class="message" role="status" aria-live="polite"></p><p class="privacy">Audio stays on your device. Presets, profiles, Smart Fix, and analyzer data stay local in Chrome.</p>
+    <p id="message" class="message" role="status" aria-live="polite"></p><p class="privacy">Audio, model weights, and AI processing stay on your device.</p>
   </main>
   <script type="module" src="popup.js"></script>
   <script type="module" src="v2-dynamics.js"></script>
   <script type="module" src="v2-smart-fix.js"></script>
   <script type="module" src="v2-productization.js"></script>
+  <script type="module" src="v3-live.js"></script>
 </body>
 </html>
