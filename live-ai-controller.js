@@ -14,7 +14,6 @@ class StereoRingBuffer {
     this.write = 0;
     this.length = 0;
   }
-
   push(left, right) {
     if (left.length !== right.length) throw new Error('Stereo block lengths differ.');
     if (left.length > this.capacity - this.length) return false;
@@ -26,7 +25,6 @@ class StereoRingBuffer {
     this.length += left.length;
     return true;
   }
-
   peek(count) {
     if (count > this.length) return null;
     const left = new Float32Array(count);
@@ -39,36 +37,33 @@ class StereoRingBuffer {
     }
     return { left, right };
   }
-
   consume(count) {
     if (count > this.length) throw new Error('Cannot consume beyond ring buffer length.');
     this.read = (this.read + count) % this.capacity;
     this.length -= count;
   }
-
-  clear() {
-    this.read = 0;
-    this.write = 0;
-    this.length = 0;
-  }
+  clear() { this.read = 0; this.write = 0; this.length = 0; }
 }
 
 function waitForWorkerReady(worker) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('AI worker initialization timed out.')), 30000);
+    const timeout = setTimeout(() => reject(new Error('AI engine initialization timed out.')), 30000);
+    const cleanup = () => {
+      clearTimeout(timeout);
+      worker.removeEventListener('message', onMessage);
+      worker.removeEventListener('error', onError);
+    };
     const onMessage = (event) => {
       const message = event.data ?? {};
-      if (message.type === 'READY') {
-        clearTimeout(timeout);
-        worker.removeEventListener('message', onMessage);
-        resolve(message);
-      } else if (message.type === 'ERROR') {
-        clearTimeout(timeout);
-        worker.removeEventListener('message', onMessage);
-        reject(new Error(message.message ?? 'AI worker initialization failed.'));
-      }
+      if (message.type === 'READY') { cleanup(); resolve(message); }
+      else if (message.type === 'ERROR') { cleanup(); reject(new Error(message.message ?? 'AI engine initialization failed.')); }
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('Audio+ AI engine assets could not be loaded. Rebuild or reinstall the extension package.'));
     };
     worker.addEventListener('message', onMessage);
+    worker.addEventListener('error', onError);
   });
 }
 
@@ -80,11 +75,8 @@ function scheduleInstrumental(state, left, right) {
   const source = aiContext.createBufferSource();
   source.buffer = buffer;
   source.connect(state.outputGain);
-
   const now = aiContext.currentTime;
-  if (state.nextPlaybackTime && state.nextPlaybackTime < now - 0.15) {
-    throw new Error('Live AI Karaoke underrun: this device cannot keep up in real time.');
-  }
+  if (state.nextPlaybackTime && state.nextPlaybackTime < now - 0.15) throw new Error('This device cannot keep up with Live AI Karaoke.');
   const startAt = state.nextPlaybackTime ? Math.max(state.nextPlaybackTime, now + 0.01) : now + START_DELAY_SECONDS;
   source.start(startAt);
   state.nextPlaybackTime = startAt + buffer.duration;
@@ -97,7 +89,6 @@ function maybeDispatch(state) {
   const chunkSize = mdxChunkSize(MDX_INST_HQ3);
   const generationSize = mdxGenerationSize(MDX_INST_HQ3);
   if (state.ring.length < chunkSize) return;
-
   const chunk = state.ring.peek(chunkSize);
   if (!chunk) return;
   state.ring.consume(generationSize);
@@ -115,11 +106,17 @@ async function failToFallback(state, reason) {
 
 export async function startLiveAi({ stream, onStatus = () => {}, muteBase = async () => {}, restoreBase = async () => {} } = {}) {
   if (!stream) throw new Error('Live AI Karaoke requires a captured tab stream.');
-
   const aiContext = new AudioContext({ sampleRate: MDX_INST_HQ3.sampleRate, latencyHint: 'playback' });
   if (aiContext.state === 'suspended') await aiContext.resume();
 
-  const worker = new Worker(chrome.runtime.getURL('dist/live-ai-worker.js'));
+  let worker;
+  try {
+    worker = new Worker(chrome.runtime.getURL('dist/live-ai-worker.js'));
+  } catch {
+    await aiContext.close();
+    throw new Error('Audio+ AI engine assets are missing. Rebuild or reinstall the extension package.');
+  }
+
   const ring = new StereoRingBuffer(RING_CAPACITY_SAMPLES);
   const captureSource = aiContext.createMediaStreamSource(stream);
   const script = aiContext.createScriptProcessor(4096, 2, 2);
@@ -127,83 +124,41 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
   const outputGain = aiContext.createGain();
   const limiter = aiContext.createDynamicsCompressor();
   silentGain.gain.value = 0;
-  outputGain.gain.value = 1;
-  limiter.threshold.value = -1;
-  limiter.knee.value = 0;
-  limiter.ratio.value = 20;
-  limiter.attack.value = 0.003;
-  limiter.release.value = 0.12;
-
-  captureSource.connect(script);
-  script.connect(silentGain);
-  silentGain.connect(aiContext.destination);
-  outputGain.connect(limiter);
-  limiter.connect(aiContext.destination);
+  limiter.threshold.value = -1; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.003; limiter.release.value = 0.12;
+  captureSource.connect(script); script.connect(silentGain); silentGain.connect(aiContext.destination); outputGain.connect(limiter); limiter.connect(aiContext.destination);
 
   const state = {
-    stream,
-    aiContext,
-    worker,
-    ring,
-    captureSource,
-    script,
-    silentGain,
-    outputGain,
-    limiter,
-    playbackSources: new Set(),
-    inFlight: false,
-    sequence: 0,
-    firstChunkAccepted: false,
-    baseMuted: false,
-    nextPlaybackTime: 0,
-    lastRtf: null,
-    stopped: false,
+    stream, aiContext, worker, ring, captureSource, script, silentGain, outputGain, limiter,
+    playbackSources: new Set(), inFlight: false, sequence: 0, firstChunkAccepted: false,
+    baseMuted: false, nextPlaybackTime: 0, lastRtf: null, stopped: false,
     status: { active: true, phase: 'warming', reason: null, rtf: null, quality: 'warming' },
-    onStatus,
-    muteBase,
-    restoreBase
+    onStatus, muteBase, restoreBase
   };
-
   onStatus(state.status);
 
   worker.addEventListener('message', async (event) => {
     const message = event.data ?? {};
     if (state.stopped) return;
-    if (message.type === 'ERROR') {
-      state.inFlight = false;
-      await failToFallback(state, message.message ?? 'AI worker failed.');
-      return;
-    }
+    if (message.type === 'ERROR') { state.inFlight = false; await failToFallback(state, message.message ?? 'AI engine failed.'); return; }
     if (message.type !== 'CHUNK_READY') return;
-
     state.inFlight = false;
     state.lastRtf = Number(message.rtf);
     if (!Number.isFinite(state.lastRtf) || state.lastRtf > MAX_RTF) {
-      await failToFallback(state, `RTF ${Number.isFinite(state.lastRtf) ? state.lastRtf.toFixed(2) : 'invalid'}× is too slow for bounded live playback.`);
+      await failToFallback(state, 'This device is too slow for Live AI Karaoke; normal Audio+ audio was restored.');
       return;
     }
-
     try {
-      if (!state.firstChunkAccepted) {
-        state.firstChunkAccepted = true;
-        await state.muteBase();
-        state.baseMuted = true;
-      }
+      if (!state.firstChunkAccepted) { state.firstChunkAccepted = true; await state.muteBase(); state.baseMuted = true; }
       scheduleInstrumental(state, message.left, message.right);
       state.status = {
-        active: true,
-        phase: 'live',
-        reason: null,
-        rtf: state.lastRtf,
+        active: true, phase: 'live', reason: null, rtf: state.lastRtf,
         quality: state.lastRtf <= GOOD_RTF ? 'good' : 'warning',
         bufferedSeconds: state.ring.length / MDX_INST_HQ3.sampleRate,
         queueSeconds: Math.max(0, state.nextPlaybackTime - aiContext.currentTime)
       };
       onStatus(state.status);
       maybeDispatch(state);
-    } catch (error) {
-      await failToFallback(state, error?.message ?? String(error));
-    }
+    } catch (error) { await failToFallback(state, error?.message ?? String(error)); }
   });
 
   script.onaudioprocess = (event) => {
@@ -211,14 +166,18 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
     const left = event.inputBuffer.getChannelData(0);
     const right = event.inputBuffer.numberOfChannels > 1 ? event.inputBuffer.getChannelData(1) : left;
     if (!ring.push(left, right)) {
-      failToFallback(state, 'Live AI ring buffer reached its hard limit; falling back before memory/latency can grow.').catch(console.error);
+      failToFallback(state, 'This device fell behind; normal Audio+ audio was restored before delay could grow.').catch(console.error);
       return;
     }
     maybeDispatch(state);
   };
 
   const readyPromise = waitForWorkerReady(worker);
-  worker.postMessage({ type: 'INIT', runtimePath: chrome.runtime.getURL('vendor/ort/') });
+  worker.postMessage({
+    type: 'INIT',
+    runtimePath: chrome.runtime.getURL('vendor/ort/'),
+    modelUrl: chrome.runtime.getURL(`models/${MDX_INST_HQ3.fileName}`)
+  });
   await readyPromise;
   state.status = { ...state.status, phase: 'buffering' };
   onStatus(state.status);
@@ -228,27 +187,16 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
 export async function stopLiveAi(state, { restoreBase = true, preserveStatus = false } = {}) {
   if (!state || state.stopped) return;
   state.stopped = true;
-
   try { state.script.onaudioprocess = null; } catch {}
-  for (const source of state.playbackSources) {
-    try { source.stop(); } catch {}
-  }
+  for (const source of state.playbackSources) { try { source.stop(); } catch {} }
   state.playbackSources.clear();
-  for (const track of state.stream.getTracks()) {
-    try { track.stop(); } catch {}
-  }
-  for (const node of [state.captureSource, state.script, state.silentGain, state.outputGain, state.limiter]) {
-    try { node.disconnect(); } catch {}
-  }
+  for (const track of state.stream.getTracks()) { try { track.stop(); } catch {} }
+  for (const node of [state.captureSource, state.script, state.silentGain, state.outputGain, state.limiter]) { try { node.disconnect(); } catch {} }
   try { state.worker.postMessage({ type: 'DISPOSE' }); } catch {}
   try { state.worker.terminate(); } catch {}
   if (state.aiContext.state !== 'closed') await state.aiContext.close();
   state.ring.clear();
-
-  if (restoreBase && state.baseMuted) {
-    await state.restoreBase().catch(() => {});
-    state.baseMuted = false;
-  }
+  if (restoreBase && state.baseMuted) { await state.restoreBase().catch(() => {}); state.baseMuted = false; }
   if (!preserveStatus) {
     state.status = { active: false, phase: 'off', reason: null, rtf: state.lastRtf, quality: 'off' };
     state.onStatus(state.status);
