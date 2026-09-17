@@ -50,7 +50,8 @@ async function stopOtherLiveTabs(nextTabId) {
   return otherIds;
 }
 
-async function startLive(tabId) {
+async function startLive(tabId, executionProvider = 'webgpu') {
+  const provider = executionProvider === 'wasm' ? 'wasm' : 'webgpu';
   const tabKey = tabStateKey(tabId);
   const state = (await chrome.storage.session.get(tabKey))[tabKey];
   if (!state?.enabled) throw new Error('Enable Audio+ on this tab before starting Live AI Karaoke.');
@@ -62,6 +63,7 @@ async function startLive(tabId) {
     quality: 'warming',
     reason: null,
     rtf: null,
+    provider,
     tookOverFromAnotherTab: stoppedTabs.length > 0
   });
   const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
@@ -70,6 +72,7 @@ async function startLive(tabId) {
     type: 'START_LIVE_AI',
     tabId,
     streamId,
+    executionProvider: provider,
     originalSettings: sanitizeSettings(state)
   });
   if (!response?.ok) throw new Error(response?.error ?? 'Could not start Live AI Karaoke.');
@@ -80,7 +83,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'START_LIVE_AI_REQUEST') {
     sendResponse({ ok: true, accepted: true });
-    startLive(message.tabId).catch(async (error) => {
+    startLive(message.tabId, message.executionProvider).catch(async (error) => {
       console.error('[Audio+] live AI start failed', error);
       await writeLiveState(message.tabId, { active: false, phase: 'error', quality: 'fallback', reason: error?.message ?? String(error) });
     });
