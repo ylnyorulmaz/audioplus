@@ -6,10 +6,16 @@ import { MdxStft } from './mdx-stft.js';
 let session = null;
 let modelContract = null;
 let stft = null;
+let backend = null;
+let webgpuFallbackReason = null;
 let busy = false;
 
 function post(type, payload = {}, transfer = []) {
   globalThis.postMessage({ type, ...payload }, transfer);
+}
+
+function errorMessage(error) {
+  return error?.message ?? String(error);
 }
 
 async function sha256Hex(bytes) {
@@ -23,27 +29,57 @@ function disposeOutputs(outputs) {
   }
 }
 
+async function createInferenceSession(modelBytes) {
+  webgpuFallbackReason = null;
+
+  if (globalThis.navigator?.gpu) {
+    try {
+      const gpuSession = await ort.InferenceSession.create(modelBytes, {
+        executionProviders: ['webgpu'],
+        graphOptimizationLevel: 'all'
+      });
+      return { session: gpuSession, backend: 'webgpu' };
+    } catch (error) {
+      webgpuFallbackReason = errorMessage(error);
+    }
+  } else {
+    webgpuFallbackReason = 'WebGPU is not exposed by this browser/device.';
+  }
+
+  try {
+    const cpuSession = await ort.InferenceSession.create(modelBytes, {
+      executionProviders: ['wasm'],
+      graphOptimizationLevel: 'all'
+    });
+    return { session: cpuSession, backend: 'wasm' };
+  } catch (error) {
+    const gpuDetail = webgpuFallbackReason ? ` WebGPU: ${webgpuFallbackReason}` : '';
+    throw new Error(`Could not initialize local AI on WebGPU or WASM/CPU.${gpuDetail} CPU: ${errorMessage(error)}`);
+  }
+}
+
 async function init(runtimePath) {
   if (session) return;
   ort.env.wasm.wasmPaths = runtimePath;
+  // This worker already isolates inference from the UI. Keep CPU fallback single-threaded
+  // so an old/weak laptop cannot fan out across every core and make Chrome unresponsive.
   ort.env.wasm.numThreads = 1;
 
   const installed = await getInstalledLiveAiModel();
-  if (!installed?.bytes) throw new Error('Install the verified UVR-MDX-NET-Inst_HQ_3 model in AI Karaoke Lab first.');
+  if (!installed?.bytes) throw new Error('The verified UVR-MDX-NET-Inst_HQ_3 model is not installed locally.');
   if (installed.sha256 !== MDX_INST_HQ3.sha256) throw new Error('Installed AI model metadata does not match UVR-MDX-NET-Inst_HQ_3.');
   const hash = await sha256Hex(installed.bytes);
   if (hash !== MDX_INST_HQ3.sha256) throw new Error('Installed AI model bytes failed SHA-256 verification. Reinstall the model.');
 
-  session = await ort.InferenceSession.create(new Uint8Array(installed.bytes), {
-    executionProviders: ['webgpu'],
-    graphOptimizationLevel: 'all'
-  });
+  const created = await createInferenceSession(new Uint8Array(installed.bytes));
+  session = created.session;
+  backend = created.backend;
   modelContract = validateMdxMetadata(session, MDX_INST_HQ3);
   stft = new MdxStft(MDX_INST_HQ3);
 }
 
 async function processChunk(left, right, sequence) {
-  if (!session || !modelContract || !stft) throw new Error('Live AI worker is not initialized.');
+  if (!session || !modelContract || !stft || !backend) throw new Error('Live AI worker is not initialized.');
   if (busy) throw new Error('Live AI worker received overlapping inference requests.');
   if (!(left instanceof Float32Array) || !(right instanceof Float32Array)) throw new Error('Live AI chunk must be Float32 stereo PCM.');
   if (left.length !== right.length) throw new Error('Live AI stereo chunk lengths differ.');
@@ -73,6 +109,7 @@ async function processChunk(left, right, sequence) {
     const audioMs = generationSize / MDX_INST_HQ3.sampleRate * 1000;
     post('CHUNK_READY', {
       sequence,
+      backend,
       elapsedMs,
       rtf: elapsedMs / audioMs,
       left: outLeft,
@@ -90,6 +127,8 @@ async function dispose() {
   session = null;
   modelContract = null;
   stft = null;
+  backend = null;
+  webgpuFallbackReason = null;
   busy = false;
 }
 
@@ -99,6 +138,8 @@ globalThis.onmessage = (event) => {
     if (message.type === 'INIT') {
       await init(message.runtimePath);
       post('READY', {
+        backend,
+        webgpuFallbackReason,
         sampleRate: MDX_INST_HQ3.sampleRate,
         chunkSize: MDX_INST_HQ3.hopLength * (MDX_INST_HQ3.dimT - 1),
         generationSize: mdxGenerationSize(MDX_INST_HQ3)
@@ -114,5 +155,5 @@ globalThis.onmessage = (event) => {
       post('DISPOSED');
       return;
     }
-  })().catch((error) => post('ERROR', { message: error?.message ?? String(error), sequence: message.sequence ?? null }));
+  })().catch((error) => post('ERROR', { message: errorMessage(error), sequence: message.sequence ?? null }));
 };
