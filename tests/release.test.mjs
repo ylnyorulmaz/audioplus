@@ -38,9 +38,9 @@ test('Smart Fix remains conservative', () => {
   assert.ok(scores.muddy>=90); assert.ok(fix.bands.every((value)=>Math.abs(value)<=SMART_FIX_MAX_DB));
 });
 
-test('manifest is MV3 native side-panel 0.16.0 without broad tabs permission', async () => {
+test('manifest is MV3 native side-panel 0.16.1 without broad tabs permission', async () => {
   const manifest=JSON.parse(await read('manifest.json'));
-  assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.16.0');
+  assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.16.1');
   assert.deepEqual([...manifest.permissions].sort(),['activeTab','offscreen','sidePanel','storage','tabCapture'].sort());
   assert.equal(manifest.permissions.includes('tabs'),false);
   assert.deepEqual(manifest.host_permissions,['https://huggingface.co/*','https://*.huggingface.co/*','https://*.hf.co/*']);
