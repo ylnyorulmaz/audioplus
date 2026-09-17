@@ -20,7 +20,7 @@ test('service worker reports audible and active Audio+ tab counts without tabs p
 test('source overview makes the bound tab and other audio sessions visible in side panel', async () => {
   const text=await read('source-overview.js'); const html=await read('sidepanel.html');
   assert.match(text,/GET_AUDIO_OVERVIEW/); assert.match(text,/focusSourceButton/); assert.match(text,/otherAudibleCount/); assert.match(text,/otherEnabledCount/);
-  assert.match(html,/Selected audio source/); assert.match(html,/id="sourceName"/); assert.match(html,/id="audibleTabsBadge"/); assert.match(html,/id="sessionsBadge"/);
+  assert.match(html,/You're controlling/); assert.match(html,/id="sourceName"/); assert.match(html,/id="audibleTabsBadge"/); assert.match(html,/id="sessionsBadge"/);
 });
 
 test('target resolver keeps native side panel bound to explicitly selected source tab', async () => {
