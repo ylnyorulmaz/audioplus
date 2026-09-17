@@ -108,13 +108,20 @@ function maybeDispatch(state) {
 
 async function failToFallback(state, reason) {
   if (state.stopped) return;
-  state.status = { active: false, phase: 'fallback', reason, rtf: state.lastRtf, quality: 'fallback' };
+  state.status = { active: false, phase: 'fallback', reason, rtf: state.lastRtf, quality: 'fallback', provider: state.executionProvider };
   state.onStatus(state.status);
   await stopLiveAi(state, { restoreBase: true, preserveStatus: true });
 }
 
-export async function startLiveAi({ stream, onStatus = () => {}, muteBase = async () => {}, restoreBase = async () => {} } = {}) {
+export async function startLiveAi({
+  stream,
+  executionProvider = 'webgpu',
+  onStatus = () => {},
+  muteBase = async () => {},
+  restoreBase = async () => {}
+} = {}) {
   if (!stream) throw new Error('Live AI Karaoke requires a captured tab stream.');
+  const requestedProvider = executionProvider === 'wasm' ? 'wasm' : 'webgpu';
 
   const aiContext = new AudioContext({ sampleRate: MDX_INST_HQ3.sampleRate, latencyHint: 'playback' });
   if (aiContext.state === 'suspended') await aiContext.resume();
@@ -150,6 +157,7 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
     silentGain,
     outputGain,
     limiter,
+    executionProvider: requestedProvider,
     playbackSources: new Set(),
     inFlight: false,
     sequence: 0,
@@ -158,7 +166,7 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
     nextPlaybackTime: 0,
     lastRtf: null,
     stopped: false,
-    status: { active: true, phase: 'warming', reason: null, rtf: null, quality: 'warming' },
+    status: { active: true, phase: 'warming', reason: null, rtf: null, quality: 'warming', provider: requestedProvider },
     onStatus,
     muteBase,
     restoreBase
@@ -177,9 +185,11 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
     if (message.type !== 'CHUNK_READY') return;
 
     state.inFlight = false;
+    state.executionProvider = message.executionProvider === 'wasm' ? 'wasm' : state.executionProvider;
     state.lastRtf = Number(message.rtf);
     if (!Number.isFinite(state.lastRtf) || state.lastRtf > MAX_RTF) {
-      await failToFallback(state, `RTF ${Number.isFinite(state.lastRtf) ? state.lastRtf.toFixed(2) : 'invalid'}× is too slow for bounded live playback.`);
+      const providerName = state.executionProvider === 'wasm' ? 'Local CPU fallback' : 'GPU inference';
+      await failToFallback(state, `${providerName} RTF ${Number.isFinite(state.lastRtf) ? state.lastRtf.toFixed(2) : 'invalid'}× is too slow for bounded live playback.`);
       return;
     }
 
@@ -196,6 +206,7 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
         reason: null,
         rtf: state.lastRtf,
         quality: state.lastRtf <= GOOD_RTF ? 'good' : 'warning',
+        provider: state.executionProvider,
         bufferedSeconds: state.ring.length / MDX_INST_HQ3.sampleRate,
         queueSeconds: Math.max(0, state.nextPlaybackTime - aiContext.currentTime)
       };
@@ -218,9 +229,14 @@ export async function startLiveAi({ stream, onStatus = () => {}, muteBase = asyn
   };
 
   const readyPromise = waitForWorkerReady(worker);
-  worker.postMessage({ type: 'INIT', runtimePath: chrome.runtime.getURL('vendor/ort/') });
-  await readyPromise;
-  state.status = { ...state.status, phase: 'buffering' };
+  worker.postMessage({
+    type: 'INIT',
+    runtimePath: chrome.runtime.getURL('vendor/ort/'),
+    executionProvider: requestedProvider
+  });
+  const ready = await readyPromise;
+  state.executionProvider = ready.executionProvider === 'wasm' ? 'wasm' : 'webgpu';
+  state.status = { ...state.status, phase: 'buffering', provider: state.executionProvider };
   onStatus(state.status);
   return state;
 }
@@ -250,7 +266,7 @@ export async function stopLiveAi(state, { restoreBase = true, preserveStatus = f
     state.baseMuted = false;
   }
   if (!preserveStatus) {
-    state.status = { active: false, phase: 'off', reason: null, rtf: state.lastRtf, quality: 'off' };
+    state.status = { active: false, phase: 'off', reason: null, rtf: state.lastRtf, quality: 'off', provider: state.executionProvider };
     state.onStatus(state.status);
   }
 }
