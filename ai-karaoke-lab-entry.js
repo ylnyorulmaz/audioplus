@@ -2,6 +2,7 @@ import * as ort from 'onnxruntime-web/webgpu';
 import { MDX_INST_HQ3, validateMdxMetadata } from './mdx-profile.js';
 import { decodeAudioFile, stemFileName, stereoWavBlob } from './mdx-audio.js';
 import { separateMdxStereo } from './mdx-separator.js';
+import { installLiveAiModel } from './live-ai-model-store.js';
 
 const runtimePath = chrome.runtime.getURL('vendor/ort/');
 ort.env.wasm.wasmPaths = runtimePath;
@@ -127,7 +128,7 @@ async function releaseSession() {
   modelContract = null;
   benchmarkButton.disabled = true;
   releaseModelButton.disabled = true;
-  setStatus(modelStatus, 'No model loaded.');
+  setStatus(modelStatus, 'No model loaded. The verified live model, if installed, remains stored locally.');
   setStatus(benchmarkStatus, 'Load the verified model before benchmarking.');
   updateSeparationAvailability();
   renderMetadata();
@@ -162,10 +163,11 @@ async function loadModel(file) {
     throw error;
   }
 
+  await installLiveAiModel(buffer, { fileName: file.name, size: file.size, sha256: hash });
   loadedFile = file;
   const elapsed = performance.now() - started;
   setStatus(runtimeStatus, 'Bundled ONNX Runtime WebGPU session active.', 'success');
-  setStatus(modelStatus, `${MDX_INST_HQ3.displayName} verified and loaded in ${elapsed.toFixed(0)} ms.`, 'success');
+  setStatus(modelStatus, `${MDX_INST_HQ3.displayName} verified, loaded, and installed locally for Live AI Karaoke in ${elapsed.toFixed(0)} ms.`, 'success');
   benchmarkButton.disabled = false;
   releaseModelButton.disabled = false;
   setStatus(benchmarkStatus, 'Ready for the real MDX tensor benchmark.');
