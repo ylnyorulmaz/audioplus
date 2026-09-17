@@ -7,7 +7,7 @@ const read = async (path) => (await readFile(new URL(`../${path}`, import.meta.u
 test('service worker composes audio bridges and opens Chrome native side panel', async () => {
   const text=await read('service-worker.js');
   assert.match(text,/^import '\.\/live-ai-background\.js';\nimport '\.\/background\.js';/);
-  assert.match(text,/chrome\.action\.onClicked/); assert.match(text,/chrome\.sidePanel\.open/); assert.match(text,/sidepanel\.html/);
+  assert.match(text,/chrome\.action\.onClicked/); assert.match(text,/chrome\.sidePanel\.open/); assert.match(text,/audioPlus\.sidePanelTarget/);
   assert.doesNotMatch(text,/chrome\.windows\.create/); assert.doesNotMatch(text,/type: 'popup'/);
 });
 
@@ -76,7 +76,7 @@ test('model store keeps verified weights local in IndexedDB', async () => {
 
 test('side panel has explicit AI off path and Fast Karaoke Off control', async () => {
   const html=await read('sidepanel.html'); const live=await read('v3-live.js');
-  assert.match(html,/id="liveAiButton"/); assert.match(html,/data-vocal-preset="0"[^>]*>Off/); assert.match(live,/STOP_LIVE_AI_REQUEST/); assert.match(live,/Turn AI Karaoke Off/);
+  assert.match(html,/id="liveAiButton"/); assert.match(html,/data-vocal-preset="0"[^>]*>Off</); assert.match(live,/STOP_LIVE_AI_REQUEST/); assert.match(live,/Turn AI Karaoke Off/);
 });
 
 test('side panel target sync reloads existing panel when user selects another source tab', async () => {

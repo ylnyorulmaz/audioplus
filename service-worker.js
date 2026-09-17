@@ -1,7 +1,6 @@
 import './live-ai-background.js';
 import './background.js';
 
-const CONTROL_PAGE = 'sidepanel.html';
 const LABEL_PREFIX = 'audioPlus.tabLabel.';
 const PANEL_TARGET_PREFIX = 'audioPlus.sidePanelTarget.';
 const TAB_STATE_PREFIX = 'audioPlus.tab.';
@@ -32,8 +31,6 @@ async function selectPanelTarget(tab) {
   if (!tab?.id || !Number.isInteger(tab.windowId)) return;
   await rememberTabLabel(tab);
   await chrome.storage.session.set({ [panelTargetKey(tab.windowId)]: tab.id });
-  await chrome.sidePanel.setOptions({ path: CONTROL_PAGE, enabled: true });
-  await chrome.sidePanel.open({ windowId: tab.windowId });
   chrome.runtime.sendMessage({
     type: 'SIDE_PANEL_TARGET_CHANGED',
     tabId: tab.id,
@@ -74,7 +71,14 @@ async function audioOverview(targetTabId) {
 }
 
 chrome.action.onClicked.addListener((tab) => {
-  selectPanelTarget(tab).catch((error) => console.error('[Audio+] could not open side panel', error));
+  if (!tab?.id || !Number.isInteger(tab.windowId)) return;
+
+  // sidePanel.open() must run synchronously inside the toolbar click user gesture.
+  // Any awaited storage/config work before this call causes Chrome to reject it.
+  const openPromise = chrome.sidePanel.open({ windowId: tab.windowId });
+
+  selectPanelTarget(tab).catch((error) => console.error('[Audio+] could not select side panel target', error));
+  openPromise.catch((error) => console.error('[Audio+] could not open side panel', error));
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
