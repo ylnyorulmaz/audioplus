@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Audio+",
-  "version": "0.14.0",
-  "description": "Persistent browser audio control with Smart Fix, Fast Karaoke, and local AI Karaoke with WebGPU-first safe CPU fallback.",
+  "version": "0.15.0",
+  "description": "Native Chrome side-panel audio control with Smart Fix, Fast Karaoke, and local AI Karaoke with WebGPU-first safe CPU fallback.",
   "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",
     "offscreen",
+    "sidePanel",
     "storage",
     "tabCapture"
   ],
@@ -22,7 +23,10 @@
     "service_worker": "service-worker.js",
     "type": "module"
   },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "action": {
-    "default_title": "Open Audio+ controls"
+    "default_title": "Open Audio+ side panel"
   }
 }

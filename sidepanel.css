@@ -1,0 +1,14 @@
+html, body { width: 100%; min-width: 0; max-height: none; min-height: 100%; }
+body { overflow-y: auto; }
+.panel, .control-window { width: 100%; min-width: 0; max-width: none; }
+.control-header { position: sticky; top: 0; z-index: 10; padding-top: 14px; padding-bottom: 12px; background: rgba(16,18,24,.96); backdrop-filter: blur(10px); }
+.window-actions { margin-left: auto; }
+.window-button[hidden] { display: none !important; }
+.source-card { margin-top: 4px; }
+@media (max-width: 360px) {
+  .panel { padding: 14px; }
+  .source-main { grid-template-columns: auto minmax(0,1fr); }
+  .source-open { grid-column: 2; justify-self: start; }
+  .four-way { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .feature-heading { align-items: flex-start; flex-direction: column; }
+}
