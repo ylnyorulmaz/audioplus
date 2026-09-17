@@ -4,10 +4,11 @@ import test from 'node:test';
 
 const read = async (path) => (await readFile(new URL(`../${path}`, import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
 
-test('service worker composes audio bridges and opens a persistent control window', async () => {
+test('service worker composes audio bridges and opens Chrome native side panel', async () => {
   const text=await read('service-worker.js');
   assert.match(text,/^import '\.\/live-ai-background\.js';\nimport '\.\/background\.js';/);
-  assert.match(text,/chrome\.action\.onClicked/); assert.match(text,/chrome\.windows\.create/); assert.match(text,/type: 'popup'/); assert.match(text,/\?tabId=\$\{encodeURIComponent\(tabId\)\}/);
+  assert.match(text,/chrome\.action\.onClicked/); assert.match(text,/chrome\.sidePanel\.open/); assert.match(text,/sidepanel\.html/);
+  assert.doesNotMatch(text,/chrome\.windows\.create/); assert.doesNotMatch(text,/type: 'popup'/);
 });
 
 test('service worker reports audible and active Audio+ tab counts without tabs permission', async () => {
@@ -16,15 +17,15 @@ test('service worker reports audible and active Audio+ tab counts without tabs p
   assert.match(text,/audioPlus\.tabLabel/);
 });
 
-test('source overview makes the bound tab and other audio sessions visible', async () => {
-  const text=await read('source-overview.js'); const html=await read('popup.html');
-  assert.match(text,/GET_AUDIO_OVERVIEW/); assert.match(text,/Go to tab|focusSourceButton/); assert.match(text,/otherAudibleCount/); assert.match(text,/otherEnabledCount/);
+test('source overview makes the bound tab and other audio sessions visible in side panel', async () => {
+  const text=await read('source-overview.js'); const html=await read('sidepanel.html');
+  assert.match(text,/GET_AUDIO_OVERVIEW/); assert.match(text,/focusSourceButton/); assert.match(text,/otherAudibleCount/); assert.match(text,/otherEnabledCount/);
   assert.match(html,/Selected audio source/); assert.match(html,/id="sourceName"/); assert.match(html,/id="audibleTabsBadge"/); assert.match(html,/id="sessionsBadge"/);
 });
 
-test('target resolver keeps persistent window bound to the original browser tab', async () => {
+test('target resolver keeps native side panel bound to explicitly selected source tab', async () => {
   const text=await read('target-tab.js');
-  assert.match(text,/tabId/); assert.match(text,/chrome\.tabs\.get/); assert.match(text,/protocol === 'http:'/);
+  assert.match(text,/PANEL_TARGET_PREFIX/); assert.match(text,/chrome\.windows\.getCurrent/); assert.match(text,/chrome\.storage\.session\.get/); assert.match(text,/chrome\.tabs\.get/);
 });
 
 test('build emits worker bundle and packages local ONNX WASM assets', async () => {
@@ -73,9 +74,15 @@ test('model store keeps verified weights local in IndexedDB', async () => {
   assert.match(text,/indexedDB\.open/); assert.match(text,/bytes: buffer\.slice\(0\)/); assert.doesNotMatch(text,/fetch\(/);
 });
 
-test('popup has explicit AI off path and Fast Karaoke Off control', async () => {
-  const html=await read('popup.html'); const live=await read('v3-live.js');
-  assert.match(html,/id="liveAiButton"/); assert.match(html,/data-vocal-preset="0"[^>]*>Off</); assert.match(live,/STOP_LIVE_AI_REQUEST/); assert.match(live,/Turn AI Karaoke Off/);
+test('side panel has explicit AI off path and Fast Karaoke Off control', async () => {
+  const html=await read('sidepanel.html'); const live=await read('v3-live.js');
+  assert.match(html,/id="liveAiButton"/); assert.match(html,/data-vocal-preset="0"[^>]*>Off/); assert.match(live,/STOP_LIVE_AI_REQUEST/); assert.match(live,/Turn AI Karaoke Off/);
+});
+
+test('side panel target sync reloads existing panel when user selects another source tab', async () => {
+  const text=await read('sidepanel-target-sync.js'); const worker=await read('service-worker.js');
+  assert.match(text,/SIDE_PANEL_TARGET_CHANGED/); assert.match(text,/location\.reload/);
+  assert.match(worker,/SIDE_PANEL_TARGET_CHANGED/); assert.match(worker,/audioPlus\.sidePanelTarget/);
 });
 
 test('offscreen host preflights packaged worker and restores base audio', async () => {
