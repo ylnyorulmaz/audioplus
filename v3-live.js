@@ -143,7 +143,7 @@ async function startOneClickAi() {
     await downloadVerifiedModel();
     await ensureBaseAudio();
     setStatus('Starting Live AI Karaoke…');
-    const response = await chrome.runtime.sendMessage({ type: 'START_LIVE_AI_REQUEST', target: 'live-background', tabId: activeTab.id });
+    const response = await chrome.runtime.sendMessage({ type: 'START_LIVE_AI_REQUEST', tabId: activeTab.id });
     if (!response?.ok) throw new Error(response?.error ?? 'Live AI request was rejected.');
   } finally {
     busy = false;
@@ -154,7 +154,7 @@ async function startOneClickAi() {
 async function stopAi() {
   busy = true; button.disabled = true; setStatus('Turning AI Karaoke off…');
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'STOP_LIVE_AI_REQUEST', target: 'live-background', tabId: activeTab.id });
+    const response = await chrome.runtime.sendMessage({ type: 'STOP_LIVE_AI_REQUEST', tabId: activeTab.id });
     if (!response?.ok) throw new Error(response?.error ?? 'Could not stop AI Karaoke.');
   } finally { busy = false; await refresh(); }
 }
