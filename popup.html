@@ -9,39 +9,22 @@
 <body>
   <main class="panel">
     <header class="header"><div><div class="brand">AUDIO+</div><div id="siteLabel" class="site">Current tab</div></div><span id="statusPill" class="status status-off">OFF</span></header>
+    <div class="actions"><button id="settingsButton" class="secondary" type="button">Settings</button><button id="minimizeWindow" class="secondary" type="button">Minimize</button><button id="closeWindow" class="secondary" type="button">Close</button></div>
+
     <button id="powerButton" class="power" type="button">Enable Audio+</button>
     <p id="powerHint" class="power-hint">Enable processing for this tab.</p>
 
-    <section class="section" aria-labelledby="quickModesHeading"><div class="section-title" id="quickModesHeading">Quick modes</div><div id="presetGrid" class="preset-grid" aria-label="Built-in audio presets"></div></section>
-
-    <section class="section" aria-labelledby="enhanceHeading">
-      <div class="section-title" id="enhanceHeading">Enhance</div>
-      <div class="control-group compact">
-        <div class="control-heading"><label for="dialogueBoostSlider">Dialogue Boost</label><output id="dialogueBoostValue" for="dialogueBoostSlider">0%</output></div>
-        <input id="dialogueBoostSlider" type="range" min="0" max="100" step="5" value="0" />
-        <p class="control-note">Reduces low-mid muddiness and brings speech presence forward.</p>
-      </div>
-      <div class="night-mode-row">
-        <div><strong>Night Mode</strong><small>Controls loud jumps while keeping dialogue easier to hear.</small></div>
-        <div id="nightModeButtons" class="segmented" role="group" aria-label="Night Mode">
-          <button type="button" data-night-mode="off" aria-pressed="true">Off</button>
-          <button type="button" data-night-mode="light" aria-pressed="false">Light</button>
-          <button type="button" data-night-mode="strong" aria-pressed="false">Strong</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="section smart-fix-section" aria-labelledby="smartFixHeading">
-      <div class="section-title" id="smartFixHeading">Smart Fix</div>
-      <button id="smartFixButton" class="smart-fix-button" type="button">✦ FIX THIS AUDIO</button>
-      <p class="control-note smart-fix-note">Analyzes the current tab locally and applies conservative tonal correction up to ±3 dB per band.</p>
-      <div id="smartFixResult" class="smart-fix-result" role="status" aria-live="polite">Enable Audio+, play audio, then run Smart Fix.</div>
-      <button id="clearSmartFixButton" class="small-button smart-fix-clear" type="button" hidden>Clear Smart Fix</button>
+    <section class="section live-ai-section" aria-labelledby="liveAiHeading">
+      <div class="section-title" id="liveAiHeading">AI Karaoke</div>
+      <button id="liveAiButton" class="live-ai-button" type="button">Start AI Karaoke</button>
+      <div id="liveAiStatus" class="live-ai-status" role="status" aria-live="polite">Ready. Press Start and Audio+ will set up everything automatically.</div>
+      <p class="control-note">Best vocal removal. If this computer cannot keep up, Audio+ safely returns to normal audio.</p>
     </section>
 
     <section class="section" aria-labelledby="karaokeHeading">
-      <div class="section-title" id="karaokeHeading">Karaoke</div>
+      <div class="section-title" id="karaokeHeading">Fast Karaoke</div>
       <div class="karaoke-presets segmented" role="group" aria-label="Vocal Reduction modes">
+        <button type="button" data-vocal-preset="0" aria-pressed="true">Off</button>
         <button type="button" data-vocal-preset="45" aria-pressed="false">Light</button>
         <button type="button" data-vocal-preset="82" aria-pressed="false">Karaoke</button>
         <button type="button" data-vocal-preset="100" aria-pressed="false">Instrumental</button>
@@ -49,24 +32,23 @@
       <div class="control-group compact karaoke-control">
         <div class="control-heading"><label for="vocalReductionSlider">Vocal Reduction</label><output id="vocalReductionValue" for="vocalReductionSlider">0%</output></div>
         <input id="vocalReductionSlider" type="range" min="0" max="100" step="5" value="0" />
-        <p class="control-note">Aggressively reduces centered vocals mainly between 180 Hz and 6.5 kHz. Results vary by mix.</p>
       </div>
-      <label class="toggle-row karaoke-bass" for="keepBassToggle"><span><strong>Keep Bass</strong><small>Leaves the center below about 180 Hz intact to protect kick and bass.</small></span><input id="keepBassToggle" type="checkbox" checked /></label>
+      <label class="toggle-row karaoke-bass" for="keepBassToggle"><span><strong>Keep Bass</strong><small>Protect kick and bass while reducing centered vocals.</small></span><input id="keepBassToggle" type="checkbox" checked /></label>
     </section>
 
-    <section class="section live-ai-section" aria-labelledby="liveAiHeading">
-      <div class="section-title" id="liveAiHeading">Live AI Karaoke · Beta</div>
-      <button id="liveAiButton" class="live-ai-button" type="button">Start Live AI Karaoke</button>
-      <div id="liveAiStatus" class="live-ai-status" role="status" aria-live="polite">Checking local AI model…</div>
-      <p class="control-note">Runs UVR-MDX-NET-Inst_HQ_3 locally with WebGPU. The first chunk measures real-time performance. RTF &gt; 1.0×, queue underrun, or bounded-buffer overflow triggers automatic fallback to normal Audio+ audio.</p>
-      <p class="control-note">Because this MDX model needs about 5.9 seconds of context, live AI audio has a multi-second look-ahead delay. Audio-only/music use is the intended beta target; video lip-sync is not preserved.</p>
-      <a id="liveAiInstallLink" class="ai-lab-link" href="ai-lab.html" target="_blank" rel="noopener">Install / verify AI model in Lab</a>
+    <section class="section" aria-labelledby="quickModesHeading"><div class="section-title" id="quickModesHeading">Quick modes</div><div id="presetGrid" class="preset-grid" aria-label="Built-in audio presets"></div></section>
+
+    <section class="section" aria-labelledby="enhanceHeading">
+      <div class="section-title" id="enhanceHeading">Enhance</div>
+      <div class="control-group compact"><div class="control-heading"><label for="dialogueBoostSlider">Dialogue Boost</label><output id="dialogueBoostValue" for="dialogueBoostSlider">0%</output></div><input id="dialogueBoostSlider" type="range" min="0" max="100" step="5" value="0" /></div>
+      <div class="night-mode-row"><div><strong>Night Mode</strong><small>Controls loud jumps.</small></div><div id="nightModeButtons" class="segmented" role="group" aria-label="Night Mode"><button type="button" data-night-mode="off" aria-pressed="true">Off</button><button type="button" data-night-mode="light" aria-pressed="false">Light</button><button type="button" data-night-mode="strong" aria-pressed="false">Strong</button></div></div>
     </section>
 
-    <section class="section ai-lab-teaser" aria-labelledby="aiLabHeading">
-      <div class="section-title" id="aiLabHeading">AI Karaoke Lab · Experimental</div>
-      <p class="control-note">Verify the exact HQ3 model, benchmark WebGPU, and separate local files into Instrumental + Vocals. The verified model is stored locally for Live AI Karaoke.</p>
-      <a class="ai-lab-link" href="ai-lab.html" target="_blank" rel="noopener">Open AI Karaoke Lab</a>
+    <section class="section smart-fix-section" aria-labelledby="smartFixHeading">
+      <div class="section-title" id="smartFixHeading">Smart Fix</div>
+      <button id="smartFixButton" class="smart-fix-button" type="button">✦ FIX THIS AUDIO</button>
+      <div id="smartFixResult" class="smart-fix-result" role="status" aria-live="polite">Enable Audio+, play audio, then run Smart Fix.</div>
+      <button id="clearSmartFixButton" class="small-button smart-fix-clear" type="button" hidden>Clear Smart Fix</button>
     </section>
 
     <section class="section" aria-labelledby="toneHeading"><div class="section-title" id="toneHeading">Tone</div>
@@ -80,20 +62,12 @@
 
     <section class="section" aria-labelledby="customPresetHeading"><div class="section-title" id="customPresetHeading">Custom presets</div><div class="preset-library-row"><select id="customPresetSelect" aria-label="Saved custom presets"><option value="">No saved presets</option></select><button id="applyCustomPreset" class="small-button" type="button" disabled>Apply</button><button id="deleteCustomPreset" class="small-button danger" type="button" disabled>Delete</button></div><div class="save-preset-row"><input id="customPresetName" type="text" maxlength="40" placeholder="Preset name" aria-label="Preset name" /><button id="saveCustomPreset" class="small-button" type="button">Save current</button></div></section>
 
-    <details id="advancedPanel" class="advanced">
-      <summary>Advanced <span>Analyzer + 10-band EQ</span></summary>
-      <div class="spectrum-panel" aria-label="Live input spectrum">
-        <div class="spectrum-heading"><strong>Live spectrum</strong><span id="spectrumStatus">Idle</span></div>
-        <div id="spectrumBars" class="spectrum-bars"></div>
-        <div id="spectrumMetrics" class="spectrum-metrics">Enable Audio+ to view the live input spectrum.</div>
-      </div>
-      <div id="eqGrid" class="eq-grid" aria-label="10-band equalizer"></div>
-      <div class="advanced-footer"><div class="control-group compact"><div class="control-heading"><label for="preampSlider">Preamp</label><output id="preampValue" for="preampSlider">0 dB</output></div><input id="preampSlider" type="range" min="-12" max="6" step="0.5" value="0" /></div><label class="toggle-row" for="autoHeadroom"><span><strong>Auto headroom</strong><small id="headroomValue">0 dB compensation</small></span><input id="autoHeadroom" type="checkbox" checked /></label></div>
-    </details>
+    <details id="advancedPanel" class="advanced"><summary>Advanced <span>Analyzer + 10-band EQ</span></summary><div class="spectrum-panel" aria-label="Live input spectrum"><div class="spectrum-heading"><strong>Live spectrum</strong><span id="spectrumStatus">Idle</span></div><div id="spectrumBars" class="spectrum-bars"></div><div id="spectrumMetrics" class="spectrum-metrics">Enable Audio+ to view the live input spectrum.</div></div><div id="eqGrid" class="eq-grid" aria-label="10-band equalizer"></div><div class="advanced-footer"><div class="control-group compact"><div class="control-heading"><label for="preampSlider">Preamp</label><output id="preampValue" for="preampSlider">0 dB</output></div><input id="preampSlider" type="range" min="-12" max="6" step="0.5" value="0" /></div><label class="toggle-row" for="autoHeadroom"><span><strong>Auto headroom</strong><small id="headroomValue">0 dB compensation</small></span><input id="autoHeadroom" type="checkbox" checked /></label></div></details>
 
     <div class="actions"><button id="bypassButton" class="secondary" type="button" aria-pressed="false">Bypass</button><button id="resetButton" class="secondary" type="button">Reset</button></div>
-    <p id="message" class="message" role="status" aria-live="polite"></p><p class="privacy">Audio, model weights, and AI processing stay on your device.</p>
+    <p id="message" class="message" role="status" aria-live="polite"></p><p class="privacy">Audio and AI processing stay on your device.</p>
   </main>
+  <script type="module" src="window-controls.js"></script>
   <script type="module" src="popup.js"></script>
   <script type="module" src="v2-dynamics.js"></script>
   <script type="module" src="v2-smart-fix.js"></script>
