@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Audio+",
-  "version": "0.13.0",
-  "description": "Persistent browser audio control with multi-tab awareness, Smart Fix, Fast Karaoke, and local MDX WebGPU AI Karaoke.",
+  "version": "0.14.0",
+  "description": "Persistent browser audio control with Smart Fix, Fast Karaoke, and local AI Karaoke with WebGPU-first safe CPU fallback.",
   "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",
