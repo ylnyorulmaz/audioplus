@@ -25,6 +25,14 @@ async function assertLiveRuntimePackaged() {
   }
 }
 
+function cloneBaseCapture(tabId) {
+  const bridge = globalThis.audioPlusCaptureBridge;
+  if (!bridge?.cloneBaseStream) {
+    throw new Error('Audio+ capture bridge is unavailable. Reload the extension and re-enable Audio+.');
+  }
+  return bridge.cloneBaseStream(tabId);
+}
+
 async function applyBaseSettings(tabId, settings) {
   const response = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'APPLY_SETTINGS', tabId, settings });
   if (!response?.ok) throw new Error(response?.error ?? 'Could not switch the base Audio+ graph.');
@@ -41,15 +49,12 @@ async function stopController(tabId, { reason = 'user', preserveStatus = false }
   if (!preserveStatus) await writeStatus(tabId, { active: false, phase: 'off', quality: 'off', reason: null, rtf: state.lastRtf ?? null, stoppedBy: reason });
 }
 
-async function startController(tabId, streamId, originalSettings) {
+async function startController(tabId, originalSettings) {
   await stopController(tabId, { reason: 'restart' });
   let stream;
   try {
     await assertLiveRuntimePackaged();
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } },
-      video: false
-    });
+    stream = cloneBaseCapture(tabId);
     if (stream.getAudioTracks().length === 0) throw new DOMException('No tab audio track was returned.', 'NotFoundError');
 
     const state = await startLiveAi({
@@ -69,7 +74,7 @@ async function startController(tabId, streamId, originalSettings) {
       };
     }
 
-    return { ok: true, limits: LIVE_AI_LIMITS };
+    return { ok: true, limits: LIVE_AI_LIMITS, capture: 'shared-base-stream' };
   } catch (error) {
     if (stream) for (const track of stream.getTracks()) track.stop();
     const reason = error?.message ?? String(error);
@@ -83,7 +88,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   (async () => {
     if (message.type === 'START_LIVE_AI') {
-      sendResponse(await startController(message.tabId, message.streamId, message.originalSettings ?? {}));
+      sendResponse(await startController(message.tabId, message.originalSettings ?? {}));
       return;
     }
     if (message.type === 'STOP_LIVE_AI') {
