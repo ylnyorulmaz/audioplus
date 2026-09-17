@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Audio+",
-  "version": "0.9.0",
-  "description": "Browser audio toolkit with Smart Fix, live spectrum, EQ, Karaoke DSP, and an experimental local WebGPU ONNX lab.",
+  "version": "0.10.0",
+  "description": "Browser audio toolkit with Smart Fix, live spectrum, Fast Karaoke DSP, and experimental local MDX WebGPU 2-stem separation.",
   "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",
