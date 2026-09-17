@@ -53,7 +53,7 @@ test('package version matches manifest version', async () => {
 
 test('persistent controller opens and can minimize/close', async () => {
   const worker=await read('service-worker.js'); const popup=await read('popup.html'); const controller=await read('popup.js');
-  assert.match(worker,/chrome\.action\.onClicked/); assert.match(worker,/chrome\.windows\.create/); assert.match(worker,/popup\.html\?tabId=/);
+  assert.match(worker,/chrome\.action\.onClicked/); assert.match(worker,/chrome\.windows\.create/); assert.match(worker,/\?tabId=\$\{encodeURIComponent\(tabId\)\}/);
   assert.match(popup,/id="minimizeWindowButton"/); assert.match(popup,/id="closeWindowButton"/);
   assert.match(controller,/state: 'minimized'/); assert.match(controller,/chrome\.windows\.remove/); assert.match(controller,/getTargetTab/);
 });
