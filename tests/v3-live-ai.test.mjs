@@ -61,12 +61,33 @@ test('Live AI is exclusive across tabs while base Audio+ remains per-tab', async
   const base=await read('background.js'); assert.match(base,/audioPlus\.tab\./); assert.match(base,/message\.tabId/);
 });
 
+test('live AI reuses the existing base capture instead of opening a second tabCapture stream', async () => {
+  const background=await read('live-ai-background.js');
+  const host=await read('live-ai-offscreen.js');
+  const bridge=await read('capture-bridge.js');
+  const html=await read('offscreen.html');
+  assert.doesNotMatch(background,/tabCapture\.getMediaStreamId/);
+  assert.doesNotMatch(host,/getUserMedia|chromeMediaSourceId/);
+  assert.match(host,/cloneBaseCapture/); assert.match(host,/shared-base-stream/);
+  assert.match(bridge,/pendingByStreamId/); assert.match(bridge,/stream\.clone\(\)/); assert.match(bridge,/audioPlusCaptureBridge/);
+  assert.ok(html.indexOf('capture-bridge.js') < html.indexOf('offscreen.js'));
+  assert.match(html,/<script src="capture-bridge\.js"><\/script>/);
+});
+
 test('one-click AI Karaoke no longer blocks on a UI WebGPU preflight', async () => {
   const text=await read('v3-live.js');
   assert.match(text,/huggingface\.co\/seanghay\/uvr_models\/resolve/); assert.match(text,/crypto\.subtle\.digest\('SHA-256'/); assert.match(text,/hash !== MDX_INST_HQ3\.sha256/);
   assert.match(text,/installLiveAiModel/); assert.match(text,/type: 'START_CAPTURE'/); assert.match(text,/type: 'START_LIVE_AI_REQUEST'/); assert.match(text,/Turn AI Karaoke Off/);
-  assert.match(text,/WebGPU first, CPU fallback/); assert.match(text,/CPU\/WASM/);
+  assert.match(text,/CPU\/WASM/);
   assert.doesNotMatch(text,/requestAdapter/); assert.doesNotMatch(text,/powerPreference/);
+});
+
+test('live AI errors are structured and side panel displays recovery actions', async () => {
+  const errors=await read('live-ai-errors.js'); const host=await read('live-ai-offscreen.js'); const background=await read('live-ai-background.js'); const ui=await read('v3-live.js');
+  assert.match(errors,/BASE_CAPTURE_MISSING/); assert.match(errors,/CPU_TOO_SLOW/); assert.match(errors,/MODEL_INVALID/); assert.match(errors,/WORKER_INIT_FAILED/); assert.match(errors,/normalizeLiveAiError/);
+  assert.match(host,/liveAiStatusFromError/); assert.match(host,/errorCode/); assert.match(host,/action/);
+  assert.match(background,/liveAiStatusFromError/); assert.match(background,/BASE_NOT_ENABLED/);
+  assert.match(ui,/actionableErrorText/); assert.match(ui,/state\.action/);
 });
 
 test('model store keeps verified weights local in IndexedDB', async () => {
@@ -88,9 +109,11 @@ test('side panel target sync reloads existing panel when user selects another so
 test('offscreen host preflights packaged worker and restores base audio', async () => {
   const text=await read('live-ai-offscreen.js');
   assert.match(text,/assertLiveRuntimePackaged/); assert.match(text,/dist\/live-ai-worker\.js/); assert.match(text,/npm install && npm run build/);
-  assert.match(text,/chromeMediaSource: 'tab'/); assert.match(text,/target: 'offscreen', type: 'APPLY_SETTINGS'/); assert.match(text,/muteBase: \(\) => applyBaseSettings\(tabId, \{ volume: 0 \}\)/); assert.match(text,/restoreBase: \(\) => applyBaseSettings\(tabId, originalSettings\)/);
+  assert.match(text,/target: 'offscreen', type: 'APPLY_SETTINGS'/); assert.match(text,/muteBase: \(\) => applyBaseSettings\(tabId, \{ volume: 0 \}\)/); assert.match(text,/restoreBase: \(\) => applyBaseSettings\(tabId, originalSettings\)/);
 });
 
-test('offscreen page loads live AI host alongside stable V2 graph', async () => {
-  const html=await read('offscreen.html'); assert.match(html,/src="offscreen\.js"/); assert.match(html,/src="live-ai-offscreen\.js"/);
+test('offscreen page loads capture bridge before base and live AI hosts', async () => {
+  const html=await read('offscreen.html');
+  const bridge=html.indexOf('capture-bridge.js'); const base=html.indexOf('offscreen.js'); const live=html.indexOf('live-ai-offscreen.js');
+  assert.ok(bridge >= 0 && bridge < base && base < live);
 });

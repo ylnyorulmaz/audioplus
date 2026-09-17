@@ -1,4 +1,5 @@
 import { startLiveAi, stopLiveAi, LIVE_AI_LIMITS } from './live-ai-controller.js';
+import { LIVE_AI_ERROR_CODES, liveAiError, liveAiStatusFromError } from './live-ai-errors.js';
 
 const controllers = new Map();
 const LIVE_PREFIX = 'audioPlus.liveAi.';
@@ -20,37 +21,84 @@ async function assertLiveRuntimePackaged() {
   try {
     const response = await fetch(workerUrl, { cache: 'no-store' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  } catch {
-    throw new Error('Live AI runtime bundle is missing. If this is an unpacked source checkout, run npm install && npm run build, then reload Audio+ in chrome://extensions. Packaged releases include this automatically.');
+  } catch (cause) {
+    throw liveAiError(
+      LIVE_AI_ERROR_CODES.RUNTIME_MISSING,
+      'The local AI runtime is missing from this Audio+ build.',
+      'Run npm install && npm run build, reload Audio+ in chrome://extensions, then try again.',
+      cause
+    );
+  }
+}
+
+function cloneBaseCapture(tabId) {
+  const bridge = globalThis.audioPlusCaptureBridge;
+  if (!bridge?.cloneBaseStream) {
+    throw liveAiError(
+      LIVE_AI_ERROR_CODES.BASE_CAPTURE_MISSING,
+      'Audio+ could not access the existing tab audio stream.',
+      'Reload the extension, turn Audio+ off and on for this tab, then retry AI Karaoke.'
+    );
+  }
+  try {
+    return bridge.cloneBaseStream(tabId);
+  } catch (cause) {
+    const ended = /ended/i.test(cause?.message ?? '');
+    throw liveAiError(
+      ended ? LIVE_AI_ERROR_CODES.BASE_CAPTURE_ENDED : LIVE_AI_ERROR_CODES.BASE_CAPTURE_MISSING,
+      ended ? 'The tab audio stream ended before AI Karaoke could start.' : 'Audio+ could not reuse the active tab audio stream.',
+      'Turn Audio+ off and on once for this tab, then retry AI Karaoke.',
+      cause
+    );
   }
 }
 
 async function applyBaseSettings(tabId, settings) {
   const response = await chrome.runtime.sendMessage({ target: 'offscreen', type: 'APPLY_SETTINGS', tabId, settings });
-  if (!response?.ok) throw new Error(response?.error ?? 'Could not switch the base Audio+ graph.');
+  if (!response?.ok) {
+    throw liveAiError(
+      LIVE_AI_ERROR_CODES.RESTORE_FAILED,
+      response?.error ?? 'Could not switch the normal Audio+ graph.',
+      'Turn AI Karaoke off. Normal Audio+ will remain the safe fallback.'
+    );
+  }
 }
 
 async function stopController(tabId, { reason = 'user', preserveStatus = false } = {}) {
   const state = controllers.get(tabId);
   if (!state) {
-    if (!preserveStatus) await writeStatus(tabId, { active: false, phase: 'off', quality: 'off', reason: null, rtf: null });
+    if (!preserveStatus) await writeStatus(tabId, { active: false, phase: 'off', quality: 'off', reason: null, rtf: null, errorCode: null, action: null });
     return;
   }
   controllers.delete(tabId);
   await stopLiveAi(state, { restoreBase: true, preserveStatus });
-  if (!preserveStatus) await writeStatus(tabId, { active: false, phase: 'off', quality: 'off', reason: null, rtf: state.lastRtf ?? null, stoppedBy: reason });
+  if (!preserveStatus) {
+    await writeStatus(tabId, {
+      active: false,
+      phase: 'off',
+      quality: 'off',
+      reason: null,
+      rtf: state.lastRtf ?? null,
+      stoppedBy: reason,
+      errorCode: null,
+      action: null
+    });
+  }
 }
 
-async function startController(tabId, streamId, originalSettings) {
+async function startController(tabId, originalSettings) {
   await stopController(tabId, { reason: 'restart' });
   let stream;
   try {
     await assertLiveRuntimePackaged();
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } },
-      video: false
-    });
-    if (stream.getAudioTracks().length === 0) throw new DOMException('No tab audio track was returned.', 'NotFoundError');
+    stream = cloneBaseCapture(tabId);
+    if (stream.getAudioTracks().length === 0) {
+      throw liveAiError(
+        LIVE_AI_ERROR_CODES.BASE_CAPTURE_ENDED,
+        'The shared tab stream has no live audio track.',
+        'Re-enable Audio+ on this tab, then retry AI Karaoke.'
+      );
+    }
 
     const state = await startLiveAi({
       stream,
@@ -69,12 +117,12 @@ async function startController(tabId, streamId, originalSettings) {
       };
     }
 
-    return { ok: true, limits: LIVE_AI_LIMITS };
+    return { ok: true, limits: LIVE_AI_LIMITS, capture: 'shared-base-stream' };
   } catch (error) {
     if (stream) for (const track of stream.getTracks()) track.stop();
-    const reason = error?.message ?? String(error);
-    await writeStatus(tabId, { active: false, phase: 'error', quality: 'fallback', reason, rtf: null });
-    return { ok: false, error: reason };
+    const detail = liveAiStatusFromError(error);
+    await writeStatus(tabId, { ...detail, rtf: null });
+    return { ok: false, error: detail.reason, errorCode: detail.errorCode, action: detail.action };
   }
 }
 
@@ -83,7 +131,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   (async () => {
     if (message.type === 'START_LIVE_AI') {
-      sendResponse(await startController(message.tabId, message.streamId, message.originalSettings ?? {}));
+      sendResponse(await startController(message.tabId, message.originalSettings ?? {}));
       return;
     }
     if (message.type === 'STOP_LIVE_AI') {
@@ -91,8 +139,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ ok: true });
       return;
     }
-    sendResponse({ ok: false, error: `Unknown live offscreen message type: ${message.type}` });
-  })().catch((error) => sendResponse({ ok: false, error: error?.message ?? String(error) }));
+    sendResponse({ ok: false, error: `Unknown live offscreen message type: ${message.type}`, errorCode: LIVE_AI_ERROR_CODES.UNKNOWN });
+  })().catch(async (error) => {
+    const detail = liveAiStatusFromError(error);
+    if (message.tabId != null) await writeStatus(message.tabId, detail).catch(() => {});
+    sendResponse({ ok: false, error: detail.reason, errorCode: detail.errorCode, action: detail.action });
+  });
 
   return true;
 });
