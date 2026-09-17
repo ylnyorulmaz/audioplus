@@ -1,15 +1,14 @@
 import './live-ai-background.js';
 import './background.js';
 
-const CONTROL_PAGE = 'popup.html';
+const CONTROL_PAGE = 'sidepanel.html';
 const LABEL_PREFIX = 'audioPlus.tabLabel.';
+const PANEL_TARGET_PREFIX = 'audioPlus.sidePanelTarget.';
 const TAB_STATE_PREFIX = 'audioPlus.tab.';
 const LIVE_PREFIX = 'audioPlus.liveAi.';
 
 function labelKey(tabId) { return `${LABEL_PREFIX}${tabId}`; }
-function controlUrl(tabId) {
-  return chrome.runtime.getURL(`${CONTROL_PAGE}?tabId=${encodeURIComponent(tabId)}`);
-}
+function panelTargetKey(windowId) { return `${PANEL_TARGET_PREFIX}${windowId}`; }
 
 function safeHost(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); }
@@ -29,34 +28,17 @@ async function rememberTabLabel(tab) {
   });
 }
 
-async function findControlWindow() {
-  const baseUrl = chrome.runtime.getURL(CONTROL_PAGE);
-  const windows = await chrome.windows.getAll({ populate: true, windowTypes: ['popup'] });
-  for (const windowInfo of windows) {
-    const controlTab = windowInfo.tabs?.find((tab) => tab.url?.startsWith(baseUrl));
-    if (controlTab) return { windowInfo, controlTab };
-  }
-  return null;
-}
-
-async function openControlWindow(tab) {
-  if (!tab?.id) return;
+async function selectPanelTarget(tab) {
+  if (!tab?.id || !Number.isInteger(tab.windowId)) return;
   await rememberTabLabel(tab);
-  const url = controlUrl(tab.id);
-  const existing = await findControlWindow();
-  if (existing) {
-    await chrome.tabs.update(existing.controlTab.id, { url, active: true });
-    await chrome.windows.update(existing.windowInfo.id, { focused: true, state: 'normal' });
-    return;
-  }
-
-  await chrome.windows.create({
-    url,
-    type: 'popup',
-    focused: true,
-    width: 430,
-    height: 820
-  });
+  await chrome.storage.session.set({ [panelTargetKey(tab.windowId)]: tab.id });
+  await chrome.sidePanel.setOptions({ path: CONTROL_PAGE, enabled: true });
+  await chrome.sidePanel.open({ windowId: tab.windowId });
+  chrome.runtime.sendMessage({
+    type: 'SIDE_PANEL_TARGET_CHANGED',
+    tabId: tab.id,
+    windowId: tab.windowId
+  }).catch(() => {});
 }
 
 async function audioOverview(targetTabId) {
@@ -92,7 +74,7 @@ async function audioOverview(targetTabId) {
 }
 
 chrome.action.onClicked.addListener((tab) => {
-  openControlWindow(tab).catch((error) => console.error('[Audio+] could not open control window', error));
+  selectPanelTarget(tab).catch((error) => console.error('[Audio+] could not open side panel', error));
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
