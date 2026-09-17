@@ -2,7 +2,7 @@
 * { box-sizing:border-box; }
 body { margin:0; background:#0d1016; }
 button,input { font:inherit; }
-button,.file-picker,.back-link { cursor:pointer; }
+button,.file-picker,.back-link,.download-link { cursor:pointer; }
 .lab-shell { width:min(860px, calc(100% - 32px)); margin:0 auto; padding:36px 0 56px; }
 .lab-header { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:24px; }
 .eyebrow { color:#8ca7da; font-size:11px; font-weight:800; letter-spacing:.12em; }
@@ -20,6 +20,18 @@ button:disabled { cursor:not-allowed; opacity:.45; }
 .status-box[data-tone="success"] { border-color:#365f45; color:#98dfad; }
 .status-box[data-tone="error"] { border-color:#6c3e43; color:#efacb2; }
 .metadata { margin:0; max-height:280px; overflow:auto; padding:12px; border:1px solid #2b3442; border-radius:9px; background:#090d12; color:#c6d1e2; font-size:11px; line-height:1.55; white-space:pre-wrap; }
+.profile-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; margin:0 0 13px; }
+.profile-grid span { padding:7px 8px; border:1px solid #2c3748; border-radius:8px; background:#0f151e; color:#b9c7dc; font-size:10px; text-align:center; }
+.separator-card button { margin-top:10px; }
+progress { display:block; width:100%; height:10px; margin-top:12px; accent-color:#7394d0; }
+.stem-results { display:grid; gap:12px; margin-top:14px; }
+.stem-row { display:grid; grid-template-columns:180px 1fr auto; align-items:center; gap:12px; padding:12px; border:1px solid #293442; border-radius:10px; background:#0e131b; }
+.stem-row div { display:grid; gap:3px; }
+.stem-row strong { font-size:12px; }
+.stem-row small { color:#798596; font-size:9px; line-height:1.35; }
+audio { width:100%; min-width:220px; }
+.download-link { color:#cfe0ff; font-size:11px; font-weight:750; text-decoration:none; white-space:nowrap; }
 .roadmap ol { margin:10px 0 0 20px; padding:0; color:#b5becc; font-size:12px; line-height:1.7; }
 footer { margin-top:20px; color:#737f90; font-size:11px; text-align:center; }
+@media (max-width:720px) { .stem-row { grid-template-columns:1fr; } .profile-grid { grid-template-columns:repeat(2,1fr); } }
 @media (max-width:620px) { .lab-header { display:block; } .back-link { display:inline-flex; margin-top:14px; } h1 { font-size:28px; } }
