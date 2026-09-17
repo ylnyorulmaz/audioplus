@@ -36,24 +36,17 @@ test('build emits worker bundle and packages local ONNX WASM assets', async () =
   assert.match(text,/ort-wasm\.\*\\\.\(\?:wasm\|mjs\)/); assert.match(text,/vendor\/ort|ortDir/);
 });
 
-test('live AI worker prefers WebGPU then falls back to single-thread WASM CPU', async () => {
+test('live AI worker requires WebGPU and probes real-time speed before going live', async () => {
   const text=await read('live-ai-worker-entry.js');
   assert.match(text,/onnxruntime-web\/webgpu/);
+  assert.match(text,/diagnoseWebGpu|webgpu-diagnose/);
+  assert.match(text,/WebGPU required for live AI Karaoke/);
   assert.match(text,/createOnnxSession\(modelBytes, 'webgpu'\)/);
-  assert.match(text,/createOnnxSession\(modelBytes, 'wasm'\)/);
-  assert.match(text,/ort\?\.InferenceSession\?\.create/);
+  assert.doesNotMatch(text,/createOnnxSession\(modelBytes, 'wasm'\)/);
   assert.match(text,/ort\.env\.wasm\.numThreads = 1/);
-  assert.match(text,/ort\.env\.wasm\.proxy = false/);
   assert.match(text,/wasmBinary/);
-  assert.match(text,/ort-wasm-simd-threaded\.asyncify\.wasm/);
-  assert.match(text,/delete ort\.env\.wasm\.wasmPaths/);
-  assert.match(text,/requestAdapter/);
-  assert.match(text,/webgpuFallbackReason/);
-  assert.match(text,/incomplete result/);
-  assert.match(text,/backend/);
   assert.match(text,/measureRealtimeProbe/);
   assert.match(text,/probe RTF/);
-  assert.match(text,/powerPreference: 'high-performance'/);
   assert.match(text,/rtf: elapsedMs \/ audioMs/);
   assert.match(text,/PROCESS_CHUNK/);
   assert.match(text,/fetchPackagedModelBuffer/);
@@ -72,6 +65,7 @@ test('live AI controller hard-bounds memory, watchdog time, and RTF', async () =
   assert.match(text,/AudioWorkletNode/);
   assert.match(text,/live-ai-capture-worklet\.js/);
   assert.match(text,/captureArmed/);
+  assert.match(text,/diagnoseWebGpu/);
   assert.doesNotMatch(text,/createScriptProcessor/);
   assert.match(text,/event\?\.error\?\.message/);
   assert.match(text,/modelUrl: chrome\.runtime\.getURL\(MDX_INST_HQ3\.fileName\)/);
@@ -112,7 +106,7 @@ test('one-click AI Karaoke no longer blocks on a UI WebGPU preflight', async () 
   const text=await read('v3-live.js');
   assert.match(text,/Using packaged AI model/); assert.match(text,/downloadVerifiedModel/);
   assert.match(text,/type: 'START_CAPTURE'/); assert.match(text,/type: 'START_LIVE_AI_REQUEST'/); assert.match(text,/Turn AI Karaoke Off/);
-  assert.match(text,/CPU\/WASM/);
+  assert.match(text,/WebGPU|Fast Karaoke/);
   assert.doesNotMatch(text,/requestAdapter/); assert.doesNotMatch(text,/powerPreference/);
   assert.doesNotMatch(text,/Range: 'bytes=0-0'/);
 });

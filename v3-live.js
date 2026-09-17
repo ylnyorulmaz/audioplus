@@ -52,9 +52,8 @@ function describe(state) {
   if (busy) return status?.textContent ?? '';
   const engine = engineLabel(state.backend);
   if (state.phase === 'starting') return 'Starting local AI engine…';
-  if (state.phase === 'warming') return 'Preparing AI Karaoke: GPU first, safe CPU fallback if needed…';
+  if (state.phase === 'warming') return 'Checking WebGPU, then loading the local AI model…';
   if (state.phase === 'buffering') {
-    if (state.backend === 'wasm') return 'GPU unavailable. Testing CPU/WASM real-time speed safely…';
     if (state.backend === 'webgpu') return 'GPU ready. Measuring real-time speed…';
     return 'Preparing the first AI audio window and measuring this device…';
   }

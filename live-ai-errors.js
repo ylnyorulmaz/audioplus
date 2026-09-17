@@ -34,6 +34,13 @@ export function normalizeLiveAiError(error) {
   if (error?.name === 'AudioPlusLiveAiError' && error.code) {
     return { code: error.code, message: error.message, action: error.action ?? null };
   }
+  if (error?.code === LIVE_AI_ERROR_CODES.WEBGPU_UNAVAILABLE || error?.code === 'WEBGPU_UNAVAILABLE') {
+    return {
+      code: LIVE_AI_ERROR_CODES.WEBGPU_UNAVAILABLE,
+      message: error.message ?? 'WebGPU is required for AI Karaoke on this device.',
+      action: error.action ?? null
+    };
+  }
   if (lower.includes('active stream') || lower.includes('capture')) {
     return { code: LIVE_AI_ERROR_CODES.BASE_CAPTURE_MISSING, message: 'Audio+ could not reuse the tab audio stream.', action: 'Turn Audio+ off and on once, then try AI Karaoke again.' };
   }
@@ -47,8 +54,12 @@ export function normalizeLiveAiError(error) {
   if (lower.includes('fetching the script') || lower.includes('worker script could not load')) {
     return { code: LIVE_AI_ERROR_CODES.WORKER_INIT_FAILED, message: 'The local AI worker could not load.', action: 'Run npm run build, reload Audio+ in chrome://extensions, then try AI Karaoke again.' };
   }
-  if (lower.includes('webgpu') || lower.includes('gpu adapter') || lower.includes('no compatible webgpu') || lower.includes('no available adapter')) {
-    return { code: LIVE_AI_ERROR_CODES.WEBGPU_UNAVAILABLE, message: 'WebGPU is unavailable, and CPU fallback could not start AI Karaoke.', action: 'Turn on hardware acceleration in Chrome settings, or use Fast Karaoke on this device.' };
+  if (lower.includes('webgpu') || lower.includes('gpu adapter') || lower.includes('no compatible webgpu') || lower.includes('no available adapter') || lower.includes('webgpu required')) {
+    return {
+      code: LIVE_AI_ERROR_CODES.WEBGPU_UNAVAILABLE,
+      message: 'WebGPU is required for AI Karaoke on this device.',
+      action: error?.action ?? 'Turn on Chrome hardware acceleration, enable ignore-gpu-blocklist + unsafe-webgpu, fully restart Chrome, check chrome://gpu, or use Fast Karaoke.'
+    };
   }
   if (lower.includes('worker is not initialized')) {
     return { code: LIVE_AI_ERROR_CODES.WORKER_INIT_FAILED, message: 'AI Karaoke started before the local model finished loading.', action: 'Turn AI Karaoke off, wait a few seconds, then try again. If it keeps failing, reload Audio+ in chrome://extensions.' };

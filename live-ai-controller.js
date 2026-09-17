@@ -1,5 +1,6 @@
 import { MDX_INST_HQ3, mdxChunkSize, mdxGenerationSize } from './mdx-profile.js';
 import { loadPackagedModelBytes } from './live-ai-model-store.js';
+import { diagnoseWebGpu } from './webgpu-diagnose.js';
 
 const MAX_RTF = 1.0;
 const GOOD_RTF = 0.6;
@@ -156,6 +157,15 @@ async function failToFallback(state, reason) {
 
 export async function startLiveAi({ stream, onStatus = () => {}, muteBase = async () => {}, restoreBase = async () => {} } = {}) {
   if (!stream) throw new Error('Live AI Karaoke requires a captured tab stream.');
+
+  onStatus({ active: true, phase: 'warming', reason: 'Checking WebGPU…', rtf: null, quality: 'warming', backend: null });
+  const gpu = await diagnoseWebGpu();
+  if (!gpu.ok) {
+    const error = new Error(`WebGPU required for live AI Karaoke. ${gpu.reason}`);
+    error.code = 'WEBGPU_UNAVAILABLE';
+    error.action = gpu.action;
+    throw error;
+  }
 
   // Load the ~67 MB ONNX in the offscreen page (has chrome.runtime). Module workers
   // often cannot fetch large extension resources reliably on their own.

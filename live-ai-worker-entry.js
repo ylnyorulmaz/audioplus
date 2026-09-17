@@ -2,6 +2,7 @@ import * as ort from 'onnxruntime-web/webgpu';
 import { coerceModelBytes, fetchPackagedModelBuffer, getInstalledLiveAiModel } from './live-ai-model-store.js';
 import { MDX_INST_HQ3, mdxGenerationSize, mdxTrim, validateMdxMetadata } from './mdx-profile.js';
 import { MdxStft } from './mdx-stft.js';
+import { diagnoseWebGpu, webGpuUnsupportedAction } from './webgpu-diagnose.js';
 
 let session = null;
 let modelContract = null;
@@ -29,27 +30,6 @@ function disposeOutputs(outputs) {
   }
 }
 
-async function probeWebGpuAdapter() {
-  const gpu = globalThis.navigator?.gpu;
-  if (!gpu?.requestAdapter) {
-    webgpuFallbackReason = 'WebGPU is not exposed by this browser/device.';
-    return null;
-  }
-  try {
-    const adapter =
-      (await gpu.requestAdapter({ powerPreference: 'high-performance' })) ??
-      (await gpu.requestAdapter());
-    if (!adapter) {
-      webgpuFallbackReason = 'No compatible WebGPU adapter was returned.';
-      return null;
-    }
-    return adapter;
-  } catch (error) {
-    webgpuFallbackReason = errorMessage(error);
-    return null;
-  }
-}
-
 async function createOnnxSession(modelBytes, executionProvider) {
   if (typeof ort?.InferenceSession?.create !== 'function') {
     throw new Error('ONNX Runtime InferenceSession.create is not available in the AI worker.');
@@ -64,21 +44,23 @@ async function createOnnxSession(modelBytes, executionProvider) {
 
 async function createInferenceSession(modelBytes) {
   webgpuFallbackReason = null;
-  const adapter = await probeWebGpuAdapter();
-
-  if (adapter) {
-    try {
-      return { session: await createOnnxSession(modelBytes, 'webgpu'), backend: 'webgpu' };
-    } catch (error) {
-      webgpuFallbackReason = errorMessage(error);
-    }
+  const diagnosis = await diagnoseWebGpu();
+  if (!diagnosis.ok) {
+    webgpuFallbackReason = diagnosis.reason;
+    // Live Inst HQ_3 cannot stay real-time on single-thread WASM; do not pretend CPU is a live path.
+    throw new Error(
+      `WebGPU required for live AI Karaoke. ${diagnosis.reason} ${diagnosis.action ?? webGpuUnsupportedAction()}`
+    );
   }
 
   try {
-    return { session: await createOnnxSession(modelBytes, 'wasm'), backend: 'wasm' };
+    return { session: await createOnnxSession(modelBytes, 'webgpu'), backend: 'webgpu' };
   } catch (error) {
-    const gpuDetail = webgpuFallbackReason ? ` WebGPU: ${webgpuFallbackReason}` : '';
-    throw new Error(`Could not initialize local AI on WebGPU or WASM/CPU.${gpuDetail} CPU: ${errorMessage(error)}`);
+    webgpuFallbackReason = errorMessage(error);
+    throw new Error(
+      `WebGPU adapter found but ONNX WebGPU session failed: ${webgpuFallbackReason}. ` +
+      `${webGpuUnsupportedAction()}`
+    );
   }
 }
 
