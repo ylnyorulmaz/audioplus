@@ -10,25 +10,28 @@
   <main class="lab-shell">
     <header class="lab-header">
       <div>
-        <div class="eyebrow">AUDIO+ · V3 PROTOTYPE</div>
+        <div class="eyebrow">AUDIO+ · V3 · 0.10.0</div>
         <h1>AI Karaoke Lab</h1>
-        <p>Validate a local 2-stem ONNX model with ONNX Runtime Web + WebGPU before connecting it to live tab audio.</p>
+        <p>Run UVR-MDX-NET-Inst_HQ_3 entirely on-device with ONNX Runtime WebGPU and a real STFT → model → iSTFT pipeline.</p>
       </div>
       <a class="back-link" href="popup.html">Audio+</a>
     </header>
 
     <section class="card">
       <h2>1. Device</h2>
-      <p class="hint">This prototype intentionally requires WebGPU. Existing Fast Karaoke remains the fallback for unsupported devices.</p>
+      <p class="hint">AI separation requires WebGPU. Existing Fast Karaoke remains the fallback for unsupported devices.</p>
       <button id="checkDeviceButton" type="button">Check WebGPU</button>
       <div id="deviceStatus" class="status-box">Not checked yet.</div>
     </section>
 
     <section class="card">
-      <h2>2. Local model</h2>
-      <p class="hint">Choose an ONNX file from your computer. The model bytes stay inside this extension page and are not uploaded.</p>
+      <h2>2. UVR-MDX-NET-Inst_HQ_3 model</h2>
+      <p class="hint">Choose the model locally. Audio+ verifies the exact SHA-256 and expected MDX tensor shape before separation. Model bytes are never uploaded.</p>
+      <div class="profile-grid">
+        <span>44.1 kHz</span><span>FFT 6144</span><span>Hop 1024</span><span>3072 × 256</span>
+      </div>
       <label class="file-picker">
-        <span>Choose .onnx model</span>
+        <span>Choose UVR-MDX-NET-Inst_HQ_3.onnx</span>
         <input id="modelFile" type="file" accept=".onnx,application/octet-stream" />
       </label>
       <div id="runtimeStatus" class="status-box">Runtime not initialized.</div>
@@ -38,29 +41,53 @@
 
     <section class="card">
       <h2>3. Graph metadata</h2>
-      <p class="hint">The lab reports model inputs/outputs first. MDX-style audio models still need their exact STFT/iSTFT and chunking profile before real audio can be separated.</p>
-      <pre id="metadataOutput" class="metadata">Load a local .onnx model to inspect its graph inputs and outputs.</pre>
+      <p class="hint">Expected model contract: float32 input/output [1, 4, 3072, 256], ordered as L-real, L-imaginary, R-real, R-imaginary.</p>
+      <pre id="metadataOutput" class="metadata">Load the verified model to inspect its graph metadata.</pre>
     </section>
 
     <section class="card">
       <h2>4. WebGPU benchmark</h2>
-      <p class="hint">For a single fixed-shape float32 input, Audio+ creates a zero tensor and measures three local inference runs. This proves runtime compatibility; it is not yet a vocal-separation quality test.</p>
-      <button id="benchmarkButton" type="button" disabled>Run synthetic benchmark</button>
-      <div id="benchmarkStatus" class="status-box">Load a compatible model before benchmarking.</div>
+      <p class="hint">Runs the real fixed MDX tensor shape through WebGPU using zero-valued spectral input.</p>
+      <button id="benchmarkButton" type="button" disabled>Run model benchmark</button>
+      <div id="benchmarkStatus" class="status-box">Load the verified model before benchmarking.</div>
+    </section>
+
+    <section class="card separator-card">
+      <h2>5. Separate a local audio file</h2>
+      <p class="hint">The file is decoded locally to stereo 44.1 kHz, processed in overlapping ~5.9 s MDX chunks, then reconstructed as Instrumental and residual Vocals. Prototype limit: 10 minutes.</p>
+      <label class="file-picker">
+        <span>Choose audio</span>
+        <input id="audioFile" type="file" accept="audio/*,.wav,.mp3,.m4a,.aac,.ogg,.flac" />
+      </label>
+      <button id="separateButton" type="button" disabled>Separate Vocals + Instrumental</button>
+      <button id="cancelButton" class="secondary" type="button" hidden>Cancel</button>
+      <progress id="separationProgress" max="1" value="0"></progress>
+      <div id="separationStatus" class="status-box">Load the verified model and choose audio.</div>
+      <div id="stemResults" class="stem-results" hidden>
+        <div class="stem-row">
+          <div><strong>Instrumental</strong><small>Direct MDX model output × 1.022 compensation</small></div>
+          <audio id="instrumentalPlayer" controls preload="metadata"></audio>
+          <a id="instrumentalDownload" class="download-link" download>Download Instrumental WAV</a>
+        </div>
+        <div class="stem-row">
+          <div><strong>Vocals</strong><small>Residual: original mix − Instrumental</small></div>
+          <audio id="vocalsPlayer" controls preload="metadata"></audio>
+          <a id="vocalsDownload" class="download-link" download>Download Vocals WAV</a>
+        </div>
+      </div>
     </section>
 
     <section class="card roadmap">
-      <h2>Next prototype step</h2>
+      <h2>Current boundary</h2>
       <ol>
-        <li>Lock one licensed 2-stem model profile.</li>
-        <li>Implement its STFT → ONNX → iSTFT pipeline.</li>
-        <li>Add overlapping audio chunks and look-ahead buffering.</li>
-        <li>Measure real-time factor on supported GPUs.</li>
-        <li>Only then route Instrumental back into Audio+ playback.</li>
+        <li>Real offline 2-stem separation is implemented in-browser.</li>
+        <li>The exact UVR-MDX-NET-Inst_HQ_3 profile is enforced.</li>
+        <li>Fast Karaoke remains instant and lightweight.</li>
+        <li>Live tab AI Karaoke still needs a streaming/look-ahead worker path; this lab intentionally separates local files first.</li>
       </ol>
     </section>
 
-    <footer>No server · no audio upload · no remote executable code.</footer>
+    <footer>No server · no audio upload · no remote executable code · model selected locally.</footer>
   </main>
   <script type="module" src="dist/ai-karaoke-lab.js"></script>
 </body>
