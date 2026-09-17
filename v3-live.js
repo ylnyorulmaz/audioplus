@@ -1,6 +1,7 @@
 import { sanitizeSettings } from './audio-settings.js';
 import { MDX_INST_HQ3 } from './mdx-profile.js';
 import { getInstalledLiveAiModel, installLiveAiModel } from './live-ai-model-store.js';
+import { normalizeLiveAiError } from './live-ai-errors.js';
 import { getTargetTab } from './target-tab.js';
 
 const MODEL_URL = 'https://huggingface.co/seanghay/uvr_models/resolve/main/UVR-MDX-NET-Inst_HQ_3.onnx?download=true';
@@ -19,6 +20,7 @@ function siteKeyFromUrl(url) {
   } catch { return null; }
 }
 function setStatus(text, tone = '') {
+  if (!status) return;
   status.textContent = text;
   status.dataset.tone = tone;
 }
@@ -27,6 +29,13 @@ function engineLabel(backend) {
   if (backend === 'webgpu') return 'WebGPU';
   if (backend === 'wasm') return 'CPU/WASM';
   return null;
+}
+function actionableErrorText(value) {
+  const detail = value?.errorCode
+    ? { code: value.errorCode, message: value.reason ?? 'AI Karaoke stopped.', action: value.action ?? null }
+    : normalizeLiveAiError(value);
+  const suffix = detail.action ? ` ${detail.action}` : '';
+  return `${detail.message}${suffix}`.trim();
 }
 
 async function sha256Hex(buffer) {
@@ -38,7 +47,7 @@ async function readLiveState() {
   if (!activeTab?.id) return { active: false, phase: 'off', quality: 'off' };
   const key = liveKey(activeTab.id);
   const result = await chrome.storage.session.get(key);
-  return result[key] ?? { active: false, phase: 'off', quality: 'off', reason: null, rtf: null, backend: null };
+  return result[key] ?? { active: false, phase: 'off', quality: 'off', reason: null, rtf: null, backend: null, errorCode: null, action: null };
 }
 
 function isActive(state) {
@@ -46,13 +55,13 @@ function isActive(state) {
 }
 
 function describe(state) {
-  if (busy) return status.textContent;
+  if (busy) return status?.textContent ?? '';
   const engine = engineLabel(state.backend);
   if (state.phase === 'starting') return 'Starting local AI engine…';
-  if (state.phase === 'warming') return 'Preparing AI Karaoke: WebGPU first, safe CPU fallback if needed…';
+  if (state.phase === 'warming') return 'Preparing AI Karaoke: GPU first, safe CPU fallback if needed…';
   if (state.phase === 'buffering') {
-    if (state.backend === 'wasm') return 'WebGPU unavailable. Testing CPU/WASM real-time speed safely…';
-    if (state.backend === 'webgpu') return 'WebGPU ready. Measuring real-time speed…';
+    if (state.backend === 'wasm') return 'GPU unavailable. Testing CPU/WASM real-time speed safely…';
+    if (state.backend === 'webgpu') return 'GPU ready. Measuring real-time speed…';
     return 'Preparing the first AI audio window and measuring this device…';
   }
   if (state.phase === 'live') {
@@ -60,17 +69,18 @@ function describe(state) {
     return `AI Karaoke ON${engine ? ` · ${engine}` : ''}${rtf}`;
   }
   if (state.phase === 'fallback') {
-    const prefix = state.backend === 'wasm' ? 'CPU fallback was not fast enough; normal Audio+ is back.' : 'AI mode stopped safely; normal Audio+ audio is back.';
-    return `${prefix} ${state.reason ?? ''}`.trim();
+    const prefix = state.backend === 'wasm' ? 'This computer could not keep AI Karaoke real-time safely.' : 'AI Karaoke stopped safely.';
+    return `${prefix} Normal Audio+ is back. ${state.reason ?? ''} ${state.action ?? ''}`.trim();
   }
-  if (state.phase === 'error') return `AI Karaoke could not start. ${state.reason ?? ''}`.trim();
+  if (state.phase === 'error') return `AI Karaoke could not start. ${actionableErrorText(state)}`;
   return 'Ready. First use installs the local AI model automatically. GPU is preferred; CPU fallback is automatic.';
 }
 
 function render(state) {
+  if (!button) return;
   const active = isActive(state);
   button.dataset.active = String(active);
-  button.textContent = active ? 'Turn AI Karaoke Off' : 'AI Karaoke';
+  button.textContent = active ? 'Turn AI Karaoke Off' : 'Try AI Karaoke';
   button.disabled = busy || !activeTab?.id;
   if (!busy) {
     const tone = state.phase === 'live' ? (state.quality === 'good' ? 'success' : 'warning') : ['fallback', 'error'].includes(state.phase) ? 'warning' : '';
@@ -84,7 +94,7 @@ async function downloadVerifiedModel() {
 
   setStatus(`First use: downloading ${MDX_INST_HQ3.displayName} (~67 MB)…`, '');
   const response = await fetch(MODEL_URL, { cache: 'force-cache' });
-  if (!response.ok) throw new Error(`AI model download failed (${response.status}). Try AI Karaoke again.`);
+  if (!response.ok) throw new Error(`AI model download failed (${response.status}). Check your connection and try again.`);
 
   const total = Number(response.headers.get('content-length')) || 0;
   if (!response.body) {
@@ -139,10 +149,10 @@ async function ensureBaseAudio() {
 async function startOneClickAi() {
   busy = true; render(await readLiveState());
   try {
-    setStatus('Preparing local AI engine (WebGPU first, CPU fallback)…');
+    setStatus('Preparing local AI engine…');
     await downloadVerifiedModel();
     await ensureBaseAudio();
-    setStatus('Starting Live AI Karaoke…');
+    setStatus('Starting AI Karaoke from the existing Audio+ audio stream…');
     const response = await chrome.runtime.sendMessage({ type: 'START_LIVE_AI_REQUEST', tabId: activeTab.id });
     if (!response?.ok) throw new Error(response?.error ?? 'Live AI request was rejected.');
   } finally {
@@ -161,10 +171,10 @@ async function stopAi() {
 
 async function refresh() {
   try { render(await readLiveState()); }
-  catch (error) { setStatus(error?.message ?? String(error), 'error'); button.disabled = busy; }
+  catch (error) { setStatus(actionableErrorText(error), 'error'); if (button) button.disabled = busy; }
 }
 
-button.addEventListener('click', async () => {
+button?.addEventListener('click', async () => {
   if (busy || !activeTab?.id) return;
   try {
     const state = await readLiveState();
@@ -172,18 +182,18 @@ button.addEventListener('click', async () => {
     else await startOneClickAi();
   } catch (error) {
     busy = false;
-    setStatus(error?.message ?? String(error), 'error');
+    setStatus(actionableErrorText(error), 'error');
     button.disabled = false;
     button.dataset.active = 'false';
-    button.textContent = 'AI Karaoke';
+    button.textContent = 'Try AI Karaoke';
   }
 });
 
 (async () => {
   activeTab = await getTargetTab();
-  if (!activeTab?.id) throw new Error('No browser tab selected for AI Karaoke.');
+  if (!activeTab?.id) throw new Error('No browser tab is selected. Open the tab you want and click the Audio+ toolbar icon.');
   await refresh();
   pollTimer = setInterval(() => { if (document.visibilityState === 'visible' && !busy) refresh(); }, 700);
-})().catch((error) => setStatus(error?.message ?? String(error), 'error'));
+})().catch((error) => setStatus(actionableErrorText(error), 'error'));
 
 window.addEventListener('pagehide', () => clearInterval(pollTimer));
