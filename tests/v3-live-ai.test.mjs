@@ -10,6 +10,18 @@ test('service worker composes audio bridges and opens a persistent control windo
   assert.match(text,/chrome\.action\.onClicked/); assert.match(text,/chrome\.windows\.create/); assert.match(text,/type: 'popup'/); assert.match(text,/\?tabId=\$\{encodeURIComponent\(tabId\)\}/);
 });
 
+test('service worker reports audible and active Audio+ tab counts without tabs permission', async () => {
+  const text=await read('service-worker.js');
+  assert.match(text,/chrome\.tabs\.query\(\{ audible: true \}\)/); assert.match(text,/GET_AUDIO_OVERVIEW/); assert.match(text,/otherAudibleCount/); assert.match(text,/otherEnabledCount/);
+  assert.match(text,/audioPlus\.tabLabel/);
+});
+
+test('source overview makes the bound tab and other audio sessions visible', async () => {
+  const text=await read('source-overview.js'); const html=await read('popup.html');
+  assert.match(text,/GET_AUDIO_OVERVIEW/); assert.match(text,/Go to tab|focusSourceButton/); assert.match(text,/otherAudibleCount/); assert.match(text,/otherEnabledCount/);
+  assert.match(html,/Selected audio source/); assert.match(html,/id="sourceName"/); assert.match(html,/id="audibleTabsBadge"/); assert.match(html,/id="sessionsBadge"/);
+});
+
 test('target resolver keeps persistent window bound to the original browser tab', async () => {
   const text=await read('target-tab.js');
   assert.match(text,/tabId/); assert.match(text,/chrome\.tabs\.get/); assert.match(text,/protocol === 'http:'/);
@@ -29,6 +41,12 @@ test('live AI controller hard-bounds memory and falls back above real time', asy
   const text=await read('live-ai-controller.js');
   assert.match(text,/const MAX_RTF = 1\.0/); assert.match(text,/const GOOD_RTF = 0\.6/); assert.match(text,/RING_CAPACITY_SAMPLES = mdxChunkSize\(MDX_INST_HQ3\) \* 3/);
   assert.match(text,/ring buffer reached its hard limit/); assert.match(text,/underrun/); assert.match(text,/state\.lastRtf > MAX_RTF/); assert.match(text,/await state\.restoreBase/);
+});
+
+test('Live AI is exclusive across tabs while base Audio+ remains per-tab', async () => {
+  const text=await read('live-ai-background.js');
+  assert.match(text,/stopOtherLiveTabs/); assert.match(text,/switched-to-another-tab/); assert.match(text,/stateLooksLive/); assert.match(text,/await stopOtherLiveTabs\(tabId\)/);
+  const base=await read('background.js'); assert.match(base,/audioPlus\.tab\./); assert.match(base,/message\.tabId/);
 });
 
 test('one-click AI Karaoke auto-downloads, verifies, installs, enables Audio+, and starts live AI', async () => {

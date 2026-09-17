@@ -28,12 +28,42 @@ async function writeLiveState(tabId, patch) {
   await chrome.storage.session.set({ [key]: { ...current, ...patch, updatedAt: Date.now() } });
 }
 
+function stateLooksLive(value) {
+  return Boolean(value?.active && ['starting', 'warming', 'buffering', 'live'].includes(value.phase));
+}
+
+async function stopLive(tabId, reason = 'user') {
+  await ensureOffscreenDocument();
+  await chrome.runtime.sendMessage({ target: 'live-offscreen', type: 'STOP_LIVE_AI', tabId, reason });
+  await writeLiveState(tabId, { active: false, phase: 'off', quality: 'off', reason: null, stoppedBy: reason });
+}
+
+async function stopOtherLiveTabs(nextTabId) {
+  const all = await chrome.storage.session.get(null);
+  const otherIds = [];
+  for (const [key, value] of Object.entries(all)) {
+    if (!key.startsWith(LIVE_PREFIX) || !stateLooksLive(value)) continue;
+    const tabId = Number(key.slice(LIVE_PREFIX.length));
+    if (Number.isInteger(tabId) && tabId !== nextTabId) otherIds.push(tabId);
+  }
+  for (const tabId of otherIds) await stopLive(tabId, 'switched-to-another-tab');
+  return otherIds;
+}
+
 async function startLive(tabId) {
   const tabKey = tabStateKey(tabId);
   const state = (await chrome.storage.session.get(tabKey))[tabKey];
   if (!state?.enabled) throw new Error('Enable Audio+ on this tab before starting Live AI Karaoke.');
   await ensureOffscreenDocument();
-  await writeLiveState(tabId, { active: true, phase: 'starting', quality: 'warming', reason: null, rtf: null });
+  const stoppedTabs = await stopOtherLiveTabs(tabId);
+  await writeLiveState(tabId, {
+    active: true,
+    phase: 'starting',
+    quality: 'warming',
+    reason: null,
+    rtf: null,
+    tookOverFromAnotherTab: stoppedTabs.length > 0
+  });
   const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
   const response = await chrome.runtime.sendMessage({
     target: 'live-offscreen',
@@ -43,12 +73,6 @@ async function startLive(tabId) {
     originalSettings: sanitizeSettings(state)
   });
   if (!response?.ok) throw new Error(response?.error ?? 'Could not start Live AI Karaoke.');
-}
-
-async function stopLive(tabId, reason = 'user') {
-  await ensureOffscreenDocument();
-  await chrome.runtime.sendMessage({ target: 'live-offscreen', type: 'STOP_LIVE_AI', tabId, reason });
-  await writeLiveState(tabId, { active: false, phase: 'off', quality: 'off', reason: null });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
