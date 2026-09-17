@@ -10,6 +10,7 @@ const status = document.querySelector('#liveAiStatus');
 let activeTab = null;
 let busy = false;
 let pollTimer = null;
+let inferenceCapabilityPromise = null;
 
 function liveKey(tabId) { return `audioPlus.liveAi.${tabId}`; }
 function siteKeyFromUrl(url) {
@@ -40,13 +41,21 @@ function isActive(state) {
   return Boolean(state.active && ['starting', 'warming', 'buffering', 'live'].includes(state.phase));
 }
 
+function providerLabel(state) {
+  if (state.provider === 'wasm') return 'CPU';
+  if (state.provider === 'webgpu') return 'GPU';
+  return '';
+}
+
 function describe(state) {
   if (busy) return status.textContent;
-  if (state.phase === 'starting') return 'Starting AI Karaoke…';
-  if (state.phase === 'warming' || state.phase === 'buffering') return 'Preparing the first AI audio window and measuring this device…';
+  const provider = providerLabel(state);
+  const suffix = provider ? ` · ${provider}` : '';
+  if (state.phase === 'starting') return `Starting AI Karaoke${suffix}…`;
+  if (state.phase === 'warming' || state.phase === 'buffering') return `Preparing the first AI audio window${suffix} and measuring this device…`;
   if (state.phase === 'live') {
     const rtf = Number.isFinite(state.rtf) ? ` · RTF ${state.rtf.toFixed(2)}×` : '';
-    return `AI Karaoke ON${rtf}`;
+    return `AI Karaoke ON${suffix}${rtf}`;
   }
   if (state.phase === 'fallback') return `AI mode stopped safely; normal Audio+ audio is back. ${state.reason ?? ''}`.trim();
   if (state.phase === 'error') return `AI Karaoke could not start. ${state.reason ?? ''}`.trim();
@@ -64,11 +73,23 @@ function render(state) {
   }
 }
 
-async function checkWebGpu() {
-  if (!navigator.gpu) throw new Error('This browser/device does not expose WebGPU. Fast Karaoke still works.');
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-  if (!adapter) throw new Error('No compatible WebGPU adapter was found. Fast Karaoke still works.');
-  return adapter;
+async function detectInferenceCapability() {
+  if (!inferenceCapabilityPromise) {
+    inferenceCapabilityPromise = (async () => {
+      if (!navigator.gpu) {
+        return { provider: 'wasm', reason: 'WebGPU is unavailable in this browser session.' };
+      }
+      try {
+        // On Windows Chrome ignores powerPreference, so request the browser-selected adapter.
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) return { provider: 'wasm', reason: 'Chrome could not expose a WebGPU adapter.' };
+        return { provider: 'webgpu', reason: null };
+      } catch (error) {
+        return { provider: 'wasm', reason: error?.message ?? 'WebGPU adapter detection failed.' };
+      }
+    })();
+  }
+  return inferenceCapabilityPromise;
 }
 
 async function downloadVerifiedModel() {
@@ -132,12 +153,21 @@ async function ensureBaseAudio() {
 async function startOneClickAi() {
   busy = true; render(await readLiveState());
   try {
-    setStatus('Checking local AI support…');
-    await checkWebGpu();
+    setStatus('Checking local AI acceleration…');
+    const capability = await detectInferenceCapability();
+    if (capability.provider === 'wasm') {
+      setStatus('WebGPU unavailable. Testing fully local CPU fallback; it will stop automatically if this device is too slow.', 'warning');
+    } else {
+      setStatus('Local GPU acceleration available.');
+    }
     await downloadVerifiedModel();
     await ensureBaseAudio();
-    setStatus('Starting Live AI Karaoke…');
-    const response = await chrome.runtime.sendMessage({ type: 'START_LIVE_AI_REQUEST', tabId: activeTab.id });
+    setStatus(capability.provider === 'wasm' ? 'Starting AI Karaoke on local CPU…' : 'Starting Live AI Karaoke on GPU…');
+    const response = await chrome.runtime.sendMessage({
+      type: 'START_LIVE_AI_REQUEST',
+      tabId: activeTab.id,
+      executionProvider: capability.provider
+    });
     if (!response?.ok) throw new Error(response?.error ?? 'Live AI request was rejected.');
   } finally {
     busy = false;
