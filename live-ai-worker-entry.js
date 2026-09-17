@@ -7,6 +7,7 @@ let session = null;
 let modelContract = null;
 let stft = null;
 let busy = false;
+let executionProvider = 'webgpu';
 
 function post(type, payload = {}, transfer = []) {
   globalThis.postMessage({ type, ...payload }, transfer);
@@ -23,19 +24,21 @@ function disposeOutputs(outputs) {
   }
 }
 
-async function init(runtimePath) {
+async function init(runtimePath, requestedProvider = 'webgpu') {
   if (session) return;
+  executionProvider = requestedProvider === 'wasm' ? 'wasm' : 'webgpu';
   ort.env.wasm.wasmPaths = runtimePath;
   ort.env.wasm.numThreads = 1;
 
   const installed = await getInstalledLiveAiModel();
-  if (!installed?.bytes) throw new Error('Install the verified UVR-MDX-NET-Inst_HQ_3 model in AI Karaoke Lab first.');
+  if (!installed?.bytes) throw new Error('The verified UVR-MDX-NET-Inst_HQ_3 model is not installed locally.');
   if (installed.sha256 !== MDX_INST_HQ3.sha256) throw new Error('Installed AI model metadata does not match UVR-MDX-NET-Inst_HQ_3.');
   const hash = await sha256Hex(installed.bytes);
   if (hash !== MDX_INST_HQ3.sha256) throw new Error('Installed AI model bytes failed SHA-256 verification. Reinstall the model.');
 
+  const executionProviders = executionProvider === 'wasm' ? ['wasm'] : ['webgpu', 'wasm'];
   session = await ort.InferenceSession.create(new Uint8Array(installed.bytes), {
-    executionProviders: ['webgpu'],
+    executionProviders,
     graphOptimizationLevel: 'all'
   });
   modelContract = validateMdxMetadata(session, MDX_INST_HQ3);
@@ -75,6 +78,7 @@ async function processChunk(left, right, sequence) {
       sequence,
       elapsedMs,
       rtf: elapsedMs / audioMs,
+      executionProvider,
       left: outLeft,
       right: outRight
     }, [outLeft.buffer, outRight.buffer]);
@@ -97,8 +101,9 @@ globalThis.onmessage = (event) => {
   const message = event.data ?? {};
   (async () => {
     if (message.type === 'INIT') {
-      await init(message.runtimePath);
+      await init(message.runtimePath, message.executionProvider);
       post('READY', {
+        executionProvider,
         sampleRate: MDX_INST_HQ3.sampleRate,
         chunkSize: MDX_INST_HQ3.hopLength * (MDX_INST_HQ3.dimT - 1),
         generationSize: mdxGenerationSize(MDX_INST_HQ3)
