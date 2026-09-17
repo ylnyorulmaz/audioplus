@@ -23,6 +23,18 @@ await build({
   logLevel: 'info'
 });
 
+await build({
+  entryPoints: ['live-ai-worker-entry.js'],
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  target: ['chrome116'],
+  outfile: join(distDir, 'live-ai-worker.js'),
+  sourcemap: false,
+  minify: false,
+  logLevel: 'info'
+});
+
 const runtimeFiles = (await readdir(ortSourceDir)).filter((name) =>
   /^ort-wasm.*\.(?:wasm|mjs)$/.test(name)
 );
