@@ -2,6 +2,10 @@ import { startLiveAi, stopLiveAi, LIVE_AI_LIMITS } from './live-ai-controller.js
 
 const controllers = new Map();
 const LIVE_PREFIX = 'audioPlus.liveAi.';
+const REQUIRED_LIVE_ASSETS = Object.freeze([
+  'dist/live-ai-worker.js',
+  'vendor/ort/ort-wasm-simd-threaded.jsep.wasm'
+]);
 
 function liveStateKey(tabId) { return `${LIVE_PREFIX}${tabId}`; }
 
@@ -13,6 +17,18 @@ async function writeStatus(tabId, status) {
       updatedAt: Date.now()
     }
   });
+}
+
+async function ensureLiveAiBuildAssets() {
+  for (const path of REQUIRED_LIVE_ASSETS) {
+    const url = chrome.runtime.getURL(path);
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      throw new Error(`Live AI build asset is missing or unreadable: ${path}. Run "npm install" and "npm run build", then reload Audio+ in chrome://extensions. (${error?.message ?? error})`);
+    }
+  }
 }
 
 async function applyBaseSettings(tabId, settings) {
@@ -35,6 +51,8 @@ async function startController(tabId, streamId, originalSettings) {
   await stopController(tabId, { reason: 'restart' });
   let stream;
   try {
+    await ensureLiveAiBuildAssets();
+
     stream = await navigator.mediaDevices.getUserMedia({
       audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } },
       video: false
