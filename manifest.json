@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Audio+",
-  "version": "0.11.0",
-  "description": "Browser audio toolkit with Smart Fix, Fast Karaoke, and bounded local MDX WebGPU Live AI Karaoke beta.",
+  "version": "0.12.0",
+  "description": "Persistent local browser audio toolkit with one-click Fast and AI Karaoke.",
   "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",
@@ -18,7 +18,10 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Audio+",
-    "default_popup": "popup.html"
+    "default_title": "Open Audio+ controls"
+  },
+  "options_ui": {
+    "page": "settings.html",
+    "open_in_tab": true
   }
 }
