@@ -38,10 +38,10 @@ async function stopController(tabId, { reason = 'user', preserveStatus = false }
   }
   controllers.delete(tabId);
   await stopLiveAi(state, { restoreBase: true, preserveStatus });
-  if (!preserveStatus) await writeStatus(tabId, { active: false, phase: 'off', quality: 'off', reason: null, rtf: state.lastRtf ?? null, stoppedBy: reason });
+  if (!preserveStatus) await writeStatus(tabId, { active: false, phase: 'off', quality: 'off', reason: null, rtf: state.lastRtf ?? null, provider: state.executionProvider, stoppedBy: reason });
 }
 
-async function startController(tabId, streamId, originalSettings) {
+async function startController(tabId, streamId, originalSettings, executionProvider = 'webgpu') {
   await stopController(tabId, { reason: 'restart' });
   let stream;
   try {
@@ -54,6 +54,7 @@ async function startController(tabId, streamId, originalSettings) {
 
     const state = await startLiveAi({
       stream,
+      executionProvider,
       onStatus: (status) => {
         writeStatus(tabId, status).catch(console.error);
         if (status.phase === 'fallback') controllers.delete(tabId);
@@ -69,11 +70,11 @@ async function startController(tabId, streamId, originalSettings) {
       };
     }
 
-    return { ok: true, limits: LIVE_AI_LIMITS };
+    return { ok: true, limits: LIVE_AI_LIMITS, provider: state.executionProvider };
   } catch (error) {
     if (stream) for (const track of stream.getTracks()) track.stop();
     const reason = error?.message ?? String(error);
-    await writeStatus(tabId, { active: false, phase: 'error', quality: 'fallback', reason, rtf: null });
+    await writeStatus(tabId, { active: false, phase: 'error', quality: 'fallback', reason, rtf: null, provider: executionProvider });
     return { ok: false, error: reason };
   }
 }
@@ -83,7 +84,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   (async () => {
     if (message.type === 'START_LIVE_AI') {
-      sendResponse(await startController(message.tabId, message.streamId, message.originalSettings ?? {}));
+      sendResponse(await startController(message.tabId, message.streamId, message.originalSettings ?? {}, message.executionProvider));
       return;
     }
     if (message.type === 'STOP_LIVE_AI') {
