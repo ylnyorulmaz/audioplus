@@ -9,11 +9,14 @@
   <link rel="stylesheet" href="sidepanel.css" />
 </head>
 <body>
-  <main class="panel control-window">
-    <header class="header control-header">
+  <main class="panel control-window persona-shell">
+    <header class="header control-header persona-header">
       <div class="brand-lockup">
         <div class="brand-mark" aria-hidden="true">A+</div>
-        <div><div class="brand">AUDIO+</div><div class="site">Browser audio control</div></div>
+        <div>
+          <div class="brand">AUDIO+</div>
+          <div class="site">Better sound, one click away</div>
+        </div>
       </div>
       <div class="window-actions">
         <span id="statusPill" class="status status-off">OFF</span>
@@ -22,60 +25,99 @@
       </div>
     </header>
 
-    <section class="source-card" aria-labelledby="sourceHeading">
+    <section class="source-card source-card-compact" aria-labelledby="sourceHeading">
       <div class="source-main">
         <span id="sourceStateDot" class="source-dot" data-audible="false" aria-hidden="true"></span>
         <div class="source-copy">
-          <span id="sourceHeading" class="source-eyebrow">Selected audio source</span>
+          <span id="sourceHeading" class="source-eyebrow">You're controlling</span>
           <strong id="sourceName">Current browser tab</strong>
           <small id="sourceMeta">Checking audio…</small>
         </div>
-        <button id="focusSourceButton" class="source-open" type="button">Go to tab</button>
+        <button id="focusSourceButton" class="source-open" type="button">Open tab</button>
       </div>
-      <div class="source-badges">
-        <span id="audibleTabsBadge" class="source-badge">Checking other tabs…</span>
-        <span id="sessionsBadge" class="source-badge">Checking Audio+ sessions…</span>
+      <div class="source-badges compact-badges">
+        <span id="audibleTabsBadge" class="source-badge">Checking tabs…</span>
+        <span id="sessionsBadge" class="source-badge">Checking Audio+…</span>
       </div>
-      <p id="sourceHint" class="source-hint">Audio+ controls only the selected tab. Click the Audio+ toolbar icon on another tab to retarget this panel.</p>
+      <p id="sourceHint" class="source-hint">Click the Audio+ toolbar icon on another tab to switch this panel.</p>
     </section>
 
-    <button id="powerButton" class="power primary-power" type="button">Enable Audio+</button>
-    <p id="powerHint" class="power-hint">Enable processing for this tab.</p>
-
-    <section class="section live-ai-section primary-feature" aria-labelledby="liveAiHeading">
-      <div class="feature-heading">
-        <div><div class="section-title" id="liveAiHeading">AI Karaoke</div><div class="feature-subtitle">Local separation · WebGPU first · safe CPU fallback</div></div>
-        <span class="feature-chip">1 AI tab at a time</span>
+    <section class="intent-hero" aria-labelledby="intentHeading">
+      <div class="intent-kicker">Start here</div>
+      <h1 id="intentHeading">What do you want right now?</h1>
+      <p>Pick a goal. Audio+ will set up the important controls for you.</p>
+      <div class="intent-grid">
+        <button class="intent-card intent-karaoke" type="button" data-experience="karaoke">
+          <span class="intent-icon" aria-hidden="true">♪</span>
+          <span class="intent-copy"><strong>Karaoke Night</strong><small>Turn down vocals and sing along</small></span>
+          <span class="intent-arrow" aria-hidden="true">›</span>
+        </button>
+        <button class="intent-card intent-voices" type="button" data-experience="voices">
+          <span class="intent-icon" aria-hidden="true">◖</span>
+          <span class="intent-copy"><strong>Clear Voices</strong><small>Movies, YouTube and podcasts</small></span>
+          <span class="intent-arrow" aria-hidden="true">›</span>
+        </button>
+        <button class="intent-card intent-quality" type="button" data-experience="better-sound">
+          <span class="intent-icon" aria-hidden="true">≈</span>
+          <span class="intent-copy"><strong>Make It Sound Better</strong><small>Analyze and gently tune this audio</small></span>
+          <span class="intent-arrow" aria-hidden="true">›</span>
+        </button>
       </div>
-      <button id="liveAiButton" class="live-ai-button" type="button"><span class="button-icon" aria-hidden="true">✦</span><span>AI Karaoke</span></button>
-      <div id="liveAiStatus" class="live-ai-status" role="status" aria-live="polite">Ready. First use installs the local AI model automatically.</div>
     </section>
 
-    <section class="section" aria-labelledby="karaokeHeading">
-      <div class="feature-heading compact-heading"><div><div class="section-title" id="karaokeHeading">Fast Karaoke</div><div class="feature-subtitle">Instant · lightweight · no AI model</div></div><span class="feature-chip quiet">Multi-tab safe</span></div>
-      <div class="karaoke-presets segmented four-way" role="group" aria-label="Fast Karaoke modes">
-        <button type="button" data-vocal-preset="0" aria-pressed="true">Off</button>
-        <button type="button" data-vocal-preset="45" aria-pressed="false">Light</button>
-        <button type="button" data-vocal-preset="82" aria-pressed="false">Karaoke</button>
-        <button type="button" data-vocal-preset="100" aria-pressed="false">Instrumental</button>
+    <div class="power-strip">
+      <div><strong>Audio+ processing</strong><small id="powerHint">Enable processing for this tab.</small></div>
+      <button id="powerButton" class="power primary-power compact-power" type="button">Enable Audio+</button>
+    </div>
+
+    <section id="karaokeZone" class="section persona-zone karaoke-zone" aria-labelledby="karaokeZoneHeading">
+      <div class="zone-heading">
+        <div><span class="zone-kicker">Sing along</span><div class="section-title friendly-title" id="karaokeZoneHeading">Karaoke</div></div>
+        <span class="persona-pill">Fun</span>
       </div>
-      <div class="control-group compact karaoke-control">
-        <div class="control-heading"><label for="vocalReductionSlider">Vocal Reduction</label><output id="vocalReductionValue" for="vocalReductionSlider">0%</output></div>
-        <input id="vocalReductionSlider" type="range" min="0" max="100" step="5" value="0" />
+      <p class="zone-intro">Start instantly, or use local AI for stronger vocal removal.</p>
+
+      <div class="quick-choice-block">
+        <div class="choice-label"><strong>Fast Karaoke</strong><span>Instant · works on almost any computer</span></div>
+        <div class="karaoke-presets segmented four-way" role="group" aria-label="Fast Karaoke modes">
+          <button type="button" data-vocal-preset="0" aria-pressed="true">Off</button>
+          <button type="button" data-vocal-preset="45" aria-pressed="false">Light</button>
+          <button type="button" data-vocal-preset="82" aria-pressed="false">Karaoke</button>
+          <button type="button" data-vocal-preset="100" aria-pressed="false">Max</button>
+        </div>
       </div>
-      <label class="toggle-row karaoke-bass" for="keepBassToggle"><span><strong>Keep Bass</strong><small>Protect kick and bass while reducing centered vocals.</small></span><input id="keepBassToggle" type="checkbox" checked /></label>
+
+      <div class="ai-choice-card">
+        <div class="feature-heading compact-heading">
+          <div><strong class="choice-title">AI Karaoke</strong><div class="feature-subtitle">Stronger separation · stays on your device</div></div>
+          <span class="feature-chip">Best quality</span>
+        </div>
+        <button id="liveAiButton" class="live-ai-button" type="button"><span class="button-icon" aria-hidden="true">✦</span><span>Try AI Karaoke</span></button>
+        <div id="liveAiStatus" class="live-ai-status" role="status" aria-live="polite">Ready. First use installs the local AI model automatically.</div>
+      </div>
+
+      <details class="mini-details">
+        <summary>Fine-tune karaoke</summary>
+        <div class="control-group compact karaoke-control">
+          <div class="control-heading"><label for="vocalReductionSlider">Vocal Reduction</label><output id="vocalReductionValue" for="vocalReductionSlider">0%</output></div>
+          <input id="vocalReductionSlider" type="range" min="0" max="100" step="5" value="0" />
+        </div>
+        <label class="toggle-row karaoke-bass" for="keepBassToggle"><span><strong>Keep Bass</strong><small>Protect kick and bass while reducing centered vocals.</small></span><input id="keepBassToggle" type="checkbox" checked /></label>
+      </details>
     </section>
 
-    <section class="section" aria-labelledby="quickModesHeading"><div class="section-title" id="quickModesHeading">Quick modes</div><div id="presetGrid" class="preset-grid" aria-label="Built-in audio presets"></div></section>
-
-    <section class="section" aria-labelledby="enhanceHeading">
-      <div class="section-title" id="enhanceHeading">Enhance</div>
-      <div class="control-group compact">
+    <section id="clarityZone" class="section persona-zone clarity-zone" aria-labelledby="clarityHeading">
+      <div class="zone-heading">
+        <div><span class="zone-kicker">Hear every word</span><div class="section-title friendly-title" id="clarityHeading">Voices & Dialogue</div></div>
+        <span class="persona-pill">Movies + Podcasts</span>
+      </div>
+      <p class="zone-intro">Bring speech forward when dialogue is buried, quiet or inconsistent.</p>
+      <div class="control-group compact featured-control">
         <div class="control-heading"><label for="dialogueBoostSlider">Dialogue Boost</label><output id="dialogueBoostValue" for="dialogueBoostSlider">0%</output></div>
         <input id="dialogueBoostSlider" type="range" min="0" max="100" step="5" value="0" />
       </div>
-      <div class="night-mode-row">
-        <div><strong>Night Mode</strong><small>Controls loud jumps while keeping dialogue clear.</small></div>
+      <div class="night-mode-row friendly-night">
+        <div><strong>Night Mode</strong><small>Tame loud jumps without losing speech.</small></div>
         <div id="nightModeButtons" class="segmented" role="group" aria-label="Night Mode">
           <button type="button" data-night-mode="off" aria-pressed="true">Off</button>
           <button type="button" data-night-mode="light" aria-pressed="false">Light</button>
@@ -84,26 +126,43 @@
       </div>
     </section>
 
-    <section class="section smart-fix-section" aria-labelledby="smartFixHeading">
-      <div class="section-title" id="smartFixHeading">Smart Fix</div>
-      <button id="smartFixButton" class="smart-fix-button" type="button">✦ FIX THIS AUDIO</button>
-      <div id="smartFixResult" class="smart-fix-result" role="status" aria-live="polite">Enable Audio+, play audio, then run Smart Fix.</div>
-      <button id="clearSmartFixButton" class="small-button smart-fix-clear" type="button" hidden>Clear Smart Fix</button>
+    <section id="soundZone" class="section persona-zone quality-zone" aria-labelledby="qualityHeading">
+      <div class="zone-heading">
+        <div><span class="zone-kicker">For music lovers</span><div class="section-title friendly-title" id="qualityHeading">Sound Quality</div></div>
+        <span class="persona-pill">Tune</span>
+      </div>
+      <p class="zone-intro">Fix obvious tonal problems quickly, then tweak as much as you want.</p>
+
+      <div class="smart-fix-section smart-fix-friendly">
+        <button id="smartFixButton" class="smart-fix-button hero-fix" type="button">✦ Analyze & Improve This Audio</button>
+        <div id="smartFixResult" class="smart-fix-result" role="status" aria-live="polite">Play audio, then let Smart Fix listen for about a second.</div>
+        <button id="clearSmartFixButton" class="small-button smart-fix-clear" type="button" hidden>Clear Smart Fix</button>
+      </div>
+
+      <div class="subsection-label">Quick sound styles</div>
+      <div id="presetGrid" class="preset-grid" aria-label="Built-in audio presets"></div>
+
+      <details class="mini-details tone-details">
+        <summary>Manual tone controls</summary>
+        <div class="control-group compact"><div class="control-heading"><label for="bassSlider">Bass</label><output id="bassValue" for="bassSlider">0 dB</output></div><input id="bassSlider" type="range" min="-12" max="12" step="0.5" value="0" /></div>
+        <div class="control-group compact"><div class="control-heading"><label for="midSlider">Mid</label><output id="midValue" for="midSlider">0 dB</output></div><input id="midSlider" type="range" min="-12" max="12" step="0.5" value="0" /></div>
+        <div class="control-group compact"><div class="control-heading"><label for="trebleSlider">Treble</label><output id="trebleValue" for="trebleSlider">0 dB</output></div><input id="trebleSlider" type="range" min="-12" max="12" step="0.5" value="0" /></div>
+        <div class="control-group compact"><div class="control-heading"><label for="volumeSlider">Volume</label><output id="volumeValue" for="volumeSlider">100%</output></div><input id="volumeSlider" type="range" min="0" max="150" step="1" value="100" /></div>
+      </details>
     </section>
 
-    <section class="section" aria-labelledby="toneHeading"><div class="section-title" id="toneHeading">Tone</div>
-      <div class="control-group compact"><div class="control-heading"><label for="bassSlider">Bass</label><output id="bassValue" for="bassSlider">0 dB</output></div><input id="bassSlider" type="range" min="-12" max="12" step="0.5" value="0" /></div>
-      <div class="control-group compact"><div class="control-heading"><label for="midSlider">Mid</label><output id="midValue" for="midSlider">0 dB</output></div><input id="midSlider" type="range" min="-12" max="12" step="0.5" value="0" /></div>
-      <div class="control-group compact"><div class="control-heading"><label for="trebleSlider">Treble</label><output id="trebleValue" for="trebleSlider">0 dB</output></div><input id="trebleSlider" type="range" min="-12" max="12" step="0.5" value="0" /></div>
-      <div class="control-group compact"><div class="control-heading"><label for="volumeSlider">Volume</label><output id="volumeValue" for="volumeSlider">100%</output></div><input id="volumeSlider" type="range" min="0" max="150" step="1" value="100" /></div>
-    </section>
+    <details class="section utility-zone">
+      <summary>Save & remember my setup</summary>
+      <div class="utility-body">
+        <label class="toggle-row" for="siteProfileToggle"><span><strong>Remember settings for this site</strong><small id="siteProfileHint">Uses your global settings.</small></span><input id="siteProfileToggle" type="checkbox" /></label>
+        <div class="subsection-label">Custom presets</div>
+        <div class="preset-library-row"><select id="customPresetSelect" aria-label="Saved custom presets"><option value="">No saved presets</option></select><button id="applyCustomPreset" class="small-button" type="button" disabled>Apply</button><button id="deleteCustomPreset" class="small-button danger" type="button" disabled>Delete</button></div>
+        <div class="save-preset-row"><input id="customPresetName" type="text" maxlength="40" placeholder="Preset name" aria-label="Preset name" /><button id="saveCustomPreset" class="small-button" type="button">Save current</button></div>
+      </div>
+    </details>
 
-    <section class="section" aria-labelledby="siteProfileHeading"><div class="section-title" id="siteProfileHeading">This site</div><label class="toggle-row" for="siteProfileToggle"><span><strong>Remember settings for this site</strong><small id="siteProfileHint">Uses your global settings.</small></span><input id="siteProfileToggle" type="checkbox" /></label></section>
-
-    <section class="section" aria-labelledby="customPresetHeading"><div class="section-title" id="customPresetHeading">Custom presets</div><div class="preset-library-row"><select id="customPresetSelect" aria-label="Saved custom presets"><option value="">No saved presets</option></select><button id="applyCustomPreset" class="small-button" type="button" disabled>Apply</button><button id="deleteCustomPreset" class="small-button danger" type="button" disabled>Delete</button></div><div class="save-preset-row"><input id="customPresetName" type="text" maxlength="40" placeholder="Preset name" aria-label="Preset name" /><button id="saveCustomPreset" class="small-button" type="button">Save current</button></div></section>
-
-    <details id="advancedPanel" class="advanced">
-      <summary>Advanced / Power user <span>Analyzer · 10-band EQ · AI diagnostics</span></summary>
+    <details id="advancedPanel" class="advanced power-user-zone">
+      <summary>Power user tools <span>Analyzer · 10-band EQ · preamp · diagnostics</span></summary>
       <div class="spectrum-panel" aria-label="Live input spectrum">
         <div class="spectrum-heading"><strong>Live spectrum</strong><span id="spectrumStatus">Idle</span></div>
         <div id="spectrumBars" class="spectrum-bars"></div>
@@ -114,11 +173,13 @@
       <a class="ai-lab-link diagnostics-link" href="ai-lab.html" target="_blank" rel="noopener">Open AI diagnostics / local file separator</a>
     </details>
 
-    <div class="actions"><button id="bypassButton" class="secondary" type="button" aria-pressed="false">Bypass</button><button id="resetButton" class="secondary" type="button">Reset</button></div>
-    <p id="message" class="message" role="status" aria-live="polite"></p><p class="privacy">Audio and AI processing stay on this device.</p>
+    <div class="actions footer-actions"><button id="bypassButton" class="secondary" type="button" aria-pressed="false">Bypass</button><button id="resetButton" class="secondary" type="button">Reset everything</button></div>
+    <p id="message" class="message global-message" role="status" aria-live="polite"></p>
+    <p class="privacy">Your audio stays on this device.</p>
   </main>
   <script src="sidepanel-target-sync.js"></script>
   <script type="module" src="popup.js"></script>
+  <script type="module" src="persona-actions.js"></script>
   <script type="module" src="source-overview.js"></script>
   <script type="module" src="v3-live.js"></script>
 </body>

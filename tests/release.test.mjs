@@ -38,16 +38,16 @@ test('Smart Fix remains conservative', () => {
   assert.ok(scores.muddy>=90); assert.ok(fix.bands.every((value)=>Math.abs(value)<=SMART_FIX_MAX_DB));
 });
 
-test('manifest is MV3 native side-panel 0.15.1 without broad tabs permission', async () => {
+test('manifest is MV3 native side-panel 0.16.0 without broad tabs permission', async () => {
   const manifest=JSON.parse(await read('manifest.json'));
-  assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.15.1');
+  assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.16.0');
   assert.deepEqual([...manifest.permissions].sort(),['activeTab','offscreen','sidePanel','storage','tabCapture'].sort());
   assert.equal(manifest.permissions.includes('tabs'),false);
   assert.deepEqual(manifest.host_permissions,['https://huggingface.co/*','https://*.huggingface.co/*','https://*.hf.co/*']);
   assert.equal(manifest.background.service_worker,'service-worker.js');
   assert.equal(manifest.action.default_popup,undefined);
   assert.equal(manifest.side_panel.default_path,'sidepanel.html');
-  assert.match(manifest.description,/side-panel/);
+  assert.match(manifest.description,/karaoke|clearer voices|better everyday sound/i);
 });
 
 test('package version matches manifest version', async () => {
@@ -65,6 +65,24 @@ test('toolbar action opens native side panel synchronously and remembers the sel
   assert.match(target,/PANEL_TARGET_PREFIX/); assert.match(target,/chrome\.storage\.session\.get/); assert.match(target,/chrome\.tabs\.get/);
 });
 
+test('persona-first home gives three plain-language one-click goals', async () => {
+  const panel=await read('sidepanel.html'); const actions=await read('persona-actions.js');
+  assert.match(panel,/What do you want right now\?/);
+  assert.match(panel,/data-experience="karaoke"/); assert.match(panel,/Karaoke Night/);
+  assert.match(panel,/data-experience="voices"/); assert.match(panel,/Clear Voices/);
+  assert.match(panel,/data-experience="better-sound"/); assert.match(panel,/Make It Sound Better/);
+  assert.match(actions,/vocalReduction: 82/); assert.match(actions,/dialogueBoost: 70/); assert.match(actions,/nightMode: 'light'/); assert.match(actions,/RUN_SMART_FIX/);
+});
+
+test('persona layout keeps novice goals above technical tools', async () => {
+  const panel=await read('sidepanel.html');
+  assert.ok(panel.indexOf('intent-hero') < panel.indexOf('karaokeZone'));
+  assert.ok(panel.indexOf('karaokeZone') < panel.indexOf('clarityZone'));
+  assert.ok(panel.indexOf('clarityZone') < panel.indexOf('soundZone'));
+  assert.ok(panel.indexOf('soundZone') < panel.indexOf('advancedPanel'));
+  assert.match(panel,/Power user tools/); assert.match(panel,/Analyzer · 10-band EQ · preamp · diagnostics/);
+});
+
 test('native side panel reloads when the toolbar selects another source tab', async () => {
   const sync=await read('sidepanel-target-sync.js'); const panel=await read('sidepanel.html');
   assert.match(sync,/SIDE_PANEL_TARGET_CHANGED/); assert.match(sync,/location\.reload/);
@@ -76,9 +94,10 @@ test('Fast Karaoke has a real Off control in side panel', async () => {
   assert.match(panel,/data-vocal-preset="0"[^>]*>Off</); assert.match(controller,/Fast Karaoke off/);
 });
 
-test('side panel uses responsive full-width layout', async () => {
+test('side panel uses responsive full-width persona layout', async () => {
   const css=await read('sidepanel.css'); const base=await read('control-window.css');
   assert.match(css,/\.panel, \.control-window \{ width: 100%/); assert.match(css,/@media \(max-width: 360px\)/);
+  assert.match(css,/\.intent-grid/); assert.match(css,/\.persona-zone/); assert.match(css,/\.power-strip/);
   assert.match(base,/\.source-card/); assert.match(base,/\.primary-feature/);
 });
 
