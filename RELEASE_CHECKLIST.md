@@ -30,18 +30,22 @@ Test with normal playback already running before enabling Audio+.
 - [ ] Audible material analyzes successfully.
 - [ ] Muddy/thin/harsh results are plausible on representative material.
 - [ ] Re-run replaces the previous Smart Fix curve rather than stacking it.
-- [ ] Clear Smart Fix leaves manual EQ, presets, Dialogue Boost, Night Mode, Karaoke, and volume unchanged.
+- [ ] Clear Smart Fix leaves manual EQ, presets, Dialogue Boost, Night Mode, and volume unchanged.
 - [ ] Two simultaneous Smart Fix runs on the same tab cannot race.
 - [ ] Quiet/silent sections produce a useful error/result rather than broken settings.
 
-## Karaoke
+## Karaoke — Work in progress / Coming soon
+
+Karaoke / Vocal Reduction / AI Karaoke are **not shipped in the current public UI**. Skip live karaoke QA for this release.
+
+When karaoke is re-enabled:
 
 - [ ] 0% Vocal Reduction sounds neutral.
-- [ ] Light 45%, Karaoke 82%, and Instrumental 100% become progressively more aggressive.
+- [ ] Light / Karaoke / Max become progressively more aggressive.
 - [ ] Keep Bass On retains more kick/bass fundamentals than Keep Bass Off.
 - [ ] Centered modern vocals are reduced noticeably.
-- [ ] Mono/wide/reverb-heavy vocals may remain but do not crash or destabilize processing.
-- [ ] Aggressive modes are checked for unacceptable loss of centered drums/instruments.
+- [ ] Mono/wide/reverb-heavy vocals may remain but do not crash processing.
+- [ ] Store copy and screenshots still say Coming soon until QA passes.
 
 ## Live spectrum / performance
 
@@ -68,7 +72,7 @@ Test with normal playback already running before enabling Audio+.
 
 - [ ] Global settings survive popup close and Chrome restart.
 - [ ] Two hostnames retain different site profiles.
-- [ ] V2 settings (Dialogue Boost, Night Mode, Vocal Reduction, Keep Bass, Smart Fix curve) persist correctly.
+- [ ] V2 settings (Dialogue Boost, Night Mode, Smart Fix curve) persist correctly.
 - [ ] Custom preset save/update/delete survives Chrome restart.
 - [ ] Built-in/custom tonal presets do not silently overwrite Smart Fix or master volume.
 
@@ -81,12 +85,13 @@ Test with normal playback already running before enabling Audio+.
 - [ ] Manual tests completed on current stable Chrome on Windows.
 - [ ] A final unpacked-extension install is tested from a clean folder/checkout.
 
-## Explicit V2 non-goals
+## Explicit non-goals for the current equalizer-first release
 
-- AI stem separation / Demucs / MDX
+- Shipped Karaoke / Vocal Reduction UI
+- Shipped AI stem separation / Live AI Karaoke
 - server-side audio processing
 - accounts or payments
 - cloud sync
 - analytics or telemetry
 
-AI source separation is a possible V3 experiment, preferably client-side ONNX/WebGPU where hardware support is adequate.
+Karaoke and local AI separation remain **Work in progress / Coming soon**.

@@ -1,8 +1,8 @@
-# Chrome Web Store Draft — Audio+ V2
+# Chrome Web Store Draft — Audio+
 
 ## Short description
 
-Make browser audio easier to hear with Smart Fix, Dialogue Boost, Night Mode, Karaoke, live spectrum, presets, and a 10-band EQ.
+Make browser audio easier to hear with Smart Fix, Dialogue Boost, Night Mode, live spectrum, presets, and a 10-band EQ. Karaoke is coming soon.
 
 ## Full description
 
@@ -18,13 +18,13 @@ Press **FIX THIS AUDIO** while audio is playing. Audio+ analyzes a short window 
 
 Dialogue Boost reduces some low-mid muddiness and brings speech presence forward. Night Mode offers Light and Strong dynamics profiles for content with large volume jumps.
 
-### Karaoke / Vocal Reduction
+### Karaoke — Work in progress / Coming soon
 
-Audio+ can reduce centered vocals in many stereo mixes with a lightweight frequency-selective center-reduction technique. Keep Bass helps preserve centered low-frequency material such as kick and bass fundamentals.
+Karaoke / Vocal Reduction and AI Karaoke are **not available in the current release UI**. They are under active development and will return as a **Coming soon** feature.
 
-Results vary by mix. Audio+ intentionally calls this **Vocal Reduction**, not perfect vocal removal.
+Do not advertise perfect vocal removal. When karaoke ships, results will still vary by mix.
 
-### V2 features
+### Features in this release
 
 - Smart Fix local audio analysis and conservative automatic correction
 - Live 10-band input spectrum
@@ -32,8 +32,6 @@ Results vary by mix. Audio+ intentionally calls this **Vocal Reduction**, not pe
 - 10-band graphic equalizer
 - Dialogue Boost
 - Night Mode: Off / Light / Strong
-- Vocal Reduction: Light / Karaoke / Instrumental
-- Keep Bass option
 - Master volume up to 150%
 - Auto Headroom compensation
 - Peak protection
@@ -41,15 +39,14 @@ Results vary by mix. Audio+ intentionally calls this **Vocal Reduction**, not pe
 - Custom tonal presets
 - Per-site profiles
 - Bypass and Reset
+- Karaoke: Work in progress / Coming soon
 
 ## Privacy
 
-Audio processing, Smart Fix measurements, and live-spectrum measurements stay on the device. Audio+ V2 has no backend, account, analytics, telemetry, or audio upload.
+Audio processing, Smart Fix measurements, and live-spectrum measurements stay on the device. Audio+ has no backend, account, analytics, telemetry, or audio upload in the current equalizer-first release.
 
 ## Important limitations
 
 Audio+ can improve listening convenience and tonal balance, but it is not mastering software and cannot reconstruct information missing from a damaged or heavily compressed source.
-
-Vocal Reduction is stereo DSP rather than AI source separation. Mono, off-center, doubled, or stereo-reverb-heavy vocals may remain, and aggressive reduction can also weaken centered instruments.
 
 Some protected or browser-restricted playback environments may not support normal tab capture.
