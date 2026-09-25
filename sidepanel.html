@@ -15,7 +15,7 @@
         <div class="brand-mark" aria-hidden="true">A+</div>
         <div>
           <div class="brand">Audio+</div>
-          <div class="site">Equalizer with karaoke</div>
+          <div class="site">Equalizer</div>
         </div>
       </div>
       <div class="window-actions">
@@ -27,7 +27,7 @@
 
     <div class="power-strip">
       <button id="powerButton" class="power primary-power compact-power" type="button">Turn on</button>
-      <small id="powerHint">Turn on to hear EQ and karaoke.</small>
+      <small id="powerHint">Turn on to hear EQ.</small>
     </div>
 
     <section id="spectrumPanel" class="section spectrum-zone" data-spectrum-always-on aria-labelledby="spectrumHeading">
@@ -53,6 +53,7 @@
       <div class="control-group compact"><div class="control-heading"><label for="volumeSlider">Volume</label><output id="volumeValue" for="volumeSlider">100%</output></div><input id="volumeSlider" type="range" min="0" max="150" step="1" value="100" /></div>
     </section>
 
+    <!-- Karaoke / AI Karaoke temporarily disabled for public EQ-first release.
     <section id="karaokeZone" class="section persona-zone karaoke-zone" aria-labelledby="karaokeZoneHeading">
       <div class="section-title label-with-tip">
         <span id="karaokeZoneHeading">Karaoke</span>
@@ -81,6 +82,7 @@
       </div>
       <div id="liveAiStatus" class="live-ai-status" role="status" aria-live="polite">Optional stronger vocal removal.</div>
     </section>
+    -->
 
     <details class="section fold" id="eqZone">
       <summary>
@@ -137,13 +139,13 @@
         <label class="toggle-row" for="siteProfileToggle"><span><strong>Remember this site</strong><small id="siteProfileHint">Off uses your global settings.</small></span><input id="siteProfileToggle" type="checkbox" /></label>
         <div class="preset-library-row"><select id="customPresetSelect" aria-label="Saved custom presets"><option value="">Saved presets</option></select><button id="applyCustomPreset" class="small-button" type="button" disabled>Apply</button><button id="deleteCustomPreset" class="small-button danger" type="button" disabled>Delete</button></div>
         <div class="save-preset-row"><input id="customPresetName" type="text" maxlength="40" placeholder="Name" aria-label="Preset name" /><button id="saveCustomPreset" class="small-button" type="button">Save</button></div>
-        <a class="ai-lab-link diagnostics-link" href="ai-lab.html" target="_blank" rel="noopener">AI lab</a>
+        <!-- <a class="ai-lab-link diagnostics-link" href="ai-lab.html" target="_blank" rel="noopener">AI lab</a> -->
       </div>
     </details>
 
     <div class="actions footer-actions">
       <button id="bypassButton" class="secondary" type="button" aria-pressed="false">Bypass</button>
-      <button type="button" class="help-tip footer-help" aria-label="About Bypass" data-tip="Keeps Audio+ connected but skips EQ and karaoke processing for a closer-to-original sound.">i</button>
+      <button type="button" class="help-tip footer-help" aria-label="About Bypass" data-tip="Keeps Audio+ connected but skips EQ processing for a closer-to-original sound.">i</button>
       <button id="resetButton" class="secondary" type="button">Reset</button>
     </div>
     <p id="message" class="message global-message" role="status" aria-live="polite"></p>
@@ -152,6 +154,6 @@
   <script type="module" src="popup.js"></script>
   <script type="module" src="persona-actions.js"></script>
   <script type="module" src="source-overview.js"></script>
-  <script type="module" src="v3-live.js"></script>
+  <!-- <script type="module" src="v3-live.js"></script> -->
 </body>
 </html>

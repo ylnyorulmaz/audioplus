@@ -1,4 +1,5 @@
-import './live-ai-background.js';
+// Karaoke live-AI background temporarily disabled for public EQ-first release.
+// import './live-ai-background.js';
 import './background.js';
 
 const LABEL_PREFIX = 'audioPlus.tabLabel.';

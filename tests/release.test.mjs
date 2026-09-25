@@ -43,11 +43,11 @@ test('manifest is MV3 native side-panel 0.16.1 without broad tabs permission', a
   assert.equal(manifest.manifest_version,3); assert.equal(manifest.version,'0.16.1');
   assert.deepEqual([...manifest.permissions].sort(),['activeTab','offscreen','sidePanel','storage','tabCapture'].sort());
   assert.equal(manifest.permissions.includes('tabs'),false);
-  assert.deepEqual(manifest.host_permissions,['https://huggingface.co/*','https://*.huggingface.co/*','https://*.hf.co/*']);
+  assert.deepEqual(manifest.host_permissions ?? [],[]);
   assert.equal(manifest.background.service_worker,'service-worker.js');
   assert.equal(manifest.action.default_popup,undefined);
   assert.equal(manifest.side_panel.default_path,'sidepanel.html');
-  assert.match(manifest.description,/karaoke|clearer voices|better everyday sound/i);
+  assert.match(manifest.description,/equalizer|clearer voices|everyday/i);
 });
 
 test('package version matches manifest version', async () => {
@@ -65,23 +65,23 @@ test('toolbar action opens native side panel synchronously and remembers the sel
   assert.match(target,/PANEL_TARGET_PREFIX/); assert.match(target,/chrome\.storage\.session\.get/); assert.match(target,/chrome\.tabs\.get/);
 });
 
-test('side panel is an equalizer with karaoke, not a goal picker', async () => {
+test('side panel is an equalizer, not a goal picker (karaoke UI commented out)', async () => {
   const panel=await read('sidepanel.html'); const js=await read('popup.js');
-  assert.match(panel,/Equalizer with karaoke/);
+  assert.match(panel,/equalizer/);
   assert.doesNotMatch(panel,/Start here/); assert.doesNotMatch(panel,/What do you want right now/);
   assert.doesNotMatch(panel,/You're controlling/); assert.doesNotMatch(panel,/Current browser tab/);
   assert.match(panel,/id="toneHeading">Tone</); assert.match(panel,/id="spectrumHeading">Live spectrum</);
   assert.ok(panel.indexOf('id="spectrumPanel"') < panel.indexOf('id="toneZone"'));
-  assert.ok(panel.indexOf('id="toneZone"') < panel.indexOf('id="karaokeZone"'));
+  assert.match(panel,/Karaoke \/ AI Karaoke temporarily disabled/);
   assert.doesNotMatch(panel,/<details class="mini-details tone-details">/);
   assert.match(js,/data-spectrum-always-on/);
 });
 
-test('equalizer layout keeps spectrum and tone above karaoke', async () => {
+test('equalizer layout keeps spectrum and tone; karaoke section remains commented', async () => {
   const panel=await read('sidepanel.html');
-  assert.ok(panel.indexOf('spectrumPanel') < panel.indexOf('karaokeZone'));
-  assert.ok(panel.indexOf('toneZone') < panel.indexOf('karaokeZone'));
-  assert.ok(panel.indexOf('karaokeZone') < panel.indexOf('advancedPanel'));
+  assert.ok(panel.indexOf('spectrumPanel') < panel.indexOf('toneZone'));
+  assert.ok(panel.indexOf('toneZone') < panel.indexOf('advancedPanel'));
+  assert.match(panel,/Karaoke \/ AI Karaoke temporarily disabled/);
   assert.match(panel,/id="karaokeZoneHeading">Karaoke</);
   assert.match(panel,/>10-band EQ</);
   assert.match(panel,/<details class="section fold"/);
@@ -103,9 +103,12 @@ test('Enable Audio+ still works when siteLabel is absent from side panel HTML', 
   assert.match(js,/UI refresh failed before enable/);
 });
 
-test('Fast Karaoke has a real Off control in side panel', async () => {
+test('Fast Karaoke controls are commented out in the public EQ-first UI', async () => {
   const panel=await read('sidepanel.html'); const controller=await read('popup.js');
-  assert.match(panel,/data-vocal-preset="0"[^>]*>Off</); assert.match(controller,/Fast Karaoke off/);
+  assert.match(panel,/Karaoke \/ AI Karaoke temporarily disabled/);
+  assert.match(panel,/data-vocal-preset="0"[^>]*>Off</);
+  assert.match(controller,/Karaoke UI temporarily disabled/);
+  assert.match(controller,/if \(els\.vocalSlider && els\.vocalValue\)/);
 });
 
 test('side panel uses responsive full-width equalizer layout', async () => {

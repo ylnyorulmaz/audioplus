@@ -176,15 +176,16 @@ function render() {
     ? (compact ? 'Open a normal tab like YouTube.' : 'Select a normal web tab such as YouTube or Spotify.')
     : state.enabled
       ? (compact ? 'Listening. Move the sliders.' : 'Processing this tab. Controls update live.')
-      : (compact ? 'Turn on to hear EQ and karaoke.' : 'Enable processing for this tab.');
-
+      : (compact ? 'Turn on to hear EQ.' : 'Enable processing for this tab.');
   for (const [key, slider, output] of [
     ['bassDb', els.bassSlider, els.bassValue], ['midDb', els.midSlider, els.midValue], ['trebleDb', els.trebleSlider, els.trebleValue], ['preampDb', els.preampSlider, els.preampValue]
   ]) { slider.value = String(state[key]); output.value = formatDb(state[key]); }
   els.volumeSlider.value = String(state.volume); els.volumeValue.value = `${Math.round(state.volume)}%`;
   els.dialogueSlider.value = String(state.dialogueBoost); els.dialogueValue.value = `${Math.round(state.dialogueBoost)}%`;
-  els.vocalSlider.value = String(state.vocalReduction); els.vocalValue.value = `${Math.round(state.vocalReduction)}%`;
-  els.keepBassToggle.checked = Boolean(state.keepBass);
+  if (els.vocalSlider && els.vocalValue) {
+    els.vocalSlider.value = String(state.vocalReduction); els.vocalValue.value = `${Math.round(state.vocalReduction)}%`;
+  }
+  if (els.keepBassToggle) els.keepBassToggle.checked = Boolean(state.keepBass);
   els.autoHeadroom.checked = Boolean(state.autoHeadroom);
   eqControls.forEach(({ slider, output }, index) => { slider.value = String(state.eqBands[index]); output.value = formatDb(state.eqBands[index]); });
   $$('[data-night-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.nightMode === state.nightMode)));
@@ -260,9 +261,14 @@ function bindRange(slider, stateKey, output, formatter = formatDb) {
 els.powerButton.addEventListener('click', () => (state.enabled ? disableAudio() : enableAudio()).catch(showError));
 bindRange(els.bassSlider, 'bassDb', els.bassValue); bindRange(els.midSlider, 'midDb', els.midValue); bindRange(els.trebleSlider, 'trebleDb', els.trebleValue); bindRange(els.preampSlider, 'preampDb', els.preampValue);
 bindRange(els.dialogueSlider, 'dialogueBoost', els.dialogueValue, (value) => `${Math.round(value)}%`);
-bindRange(els.vocalSlider, 'vocalReduction', els.vocalValue, (value) => `${Math.round(value)}%`);
+// Karaoke UI temporarily disabled for public EQ-first release.
+if (els.vocalSlider && els.vocalValue) {
+  bindRange(els.vocalSlider, 'vocalReduction', els.vocalValue, (value) => `${Math.round(value)}%`);
+}
 els.volumeSlider.addEventListener('input', () => { const volume = Number(els.volumeSlider.value); state = { ...state, volume }; els.volumeValue.value = `${Math.round(volume)}%`; queuePatch({ volume }); });
-els.keepBassToggle.addEventListener('change', () => applyPatchNow({ keepBass: els.keepBassToggle.checked }).catch(showError));
+if (els.keepBassToggle) {
+  els.keepBassToggle.addEventListener('change', () => applyPatchNow({ keepBass: els.keepBassToggle.checked }).catch(showError));
+}
 els.autoHeadroom.addEventListener('change', () => applyPatchNow({ autoHeadroom: els.autoHeadroom.checked }).catch(showError));
 $$('[data-night-mode]').forEach((button) => button.addEventListener('click', () => applyPatchNow({ nightMode: button.dataset.nightMode }).catch(showError)));
 $$('[data-vocal-preset]').forEach((button) => button.addEventListener('click', () => applyPatchNow({ vocalReduction: Number(button.dataset.vocalPreset), keepBass: true }, Number(button.dataset.vocalPreset) === 0 ? 'Fast Karaoke off.' : '').catch(showError)));

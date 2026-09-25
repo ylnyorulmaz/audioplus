@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Audio+",
   "version": "0.16.1",
-  "description": "Native Chrome side-panel audio control for karaoke, clearer voices, and better everyday sound with local AI and Smart Fix.",
+  "description": "Native Chrome side-panel equalizer for clearer voices and better everyday browser sound with Smart Fix.",
   "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",
@@ -10,11 +10,6 @@
     "sidePanel",
     "storage",
     "tabCapture"
-  ],
-  "host_permissions": [
-    "https://huggingface.co/*",
-    "https://*.huggingface.co/*",
-    "https://*.hf.co/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"

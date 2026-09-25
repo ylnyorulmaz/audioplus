@@ -76,9 +76,11 @@ test('build script packages both AI surfaces and ORT executable assets locally',
   assert.match(source,/entryPoints: \['live-ai-worker-entry\.js'\]/); assert.match(source,/outfile: join\(distDir, 'live-ai-worker\.js'\)/);
 });
 
-test('AI Lab is advanced diagnostics, not a prerequisite for normal AI Karaoke', async () => {
+test('AI Lab remains in tree while popup karaoke entry points are commented out', async () => {
   const popup=await read('popup.html'); const live=await read('v3-live.js'); const lab=await read('ai-lab.html');
-  assert.match(popup,/AI Karaoke/); assert.match(popup,/Advanced \/ Power user/); assert.match(popup,/Open AI diagnostics \/ local file separator/);
+  assert.match(popup,/Karaoke \/ AI Karaoke temporarily disabled/);
+  assert.match(popup,/AI Karaoke/); assert.match(popup,/Advanced \/ Power user/);
+  assert.match(popup,/Open AI diagnostics \/ local file separator/);
   assert.doesNotMatch(popup,/Install \/ verify AI model in Lab/);
   assert.match(live,/downloadVerifiedModel/); assert.match(live,/START_LIVE_AI_REQUEST/);
   assert.doesNotMatch(live,/Range: 'bytes=0-0'/);
