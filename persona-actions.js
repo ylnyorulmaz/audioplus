@@ -57,10 +57,15 @@ async function runExperience(name) {
   try {
     await ensureAudioEnabled();
 
+    // Karaoke experience temporarily disabled for public EQ-first release.
+    // if (name === 'karaoke') {
+    //   await updateSettings({ vocalReduction: 82, keepBass: true });
+    //   document.querySelector('#karaokeZone')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    //   setMessage('Karaoke Night is ready. Try AI Karaoke below for stronger vocal removal.', 'success');
+    //   return;
+    // }
     if (name === 'karaoke') {
-      await updateSettings({ vocalReduction: 82, keepBass: true });
-      document.querySelector('#karaokeZone')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setMessage('Karaoke Night is ready. Try AI Karaoke below for stronger vocal removal.', 'success');
+      setMessage('Karaoke is temporarily unavailable in this build.', 'info');
       return;
     }
 

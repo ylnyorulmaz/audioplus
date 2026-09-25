@@ -41,6 +41,7 @@
     <button id="powerButton" class="power primary-power" type="button">Enable Audio+</button>
     <p id="powerHint" class="power-hint">Enable processing for this tab.</p>
 
+    <!-- Karaoke / AI Karaoke temporarily disabled for public EQ-first release.
     <section class="section live-ai-section primary-feature" aria-labelledby="liveAiHeading">
       <div class="feature-heading">
         <div><div class="section-title" id="liveAiHeading">AI Karaoke</div><div class="feature-subtitle">Local vocal separation · WebGPU</div></div>
@@ -64,6 +65,7 @@
       </div>
       <label class="toggle-row karaoke-bass" for="keepBassToggle"><span><strong>Keep Bass</strong><small>Protect kick and bass while reducing centered vocals.</small></span><input id="keepBassToggle" type="checkbox" checked /></label>
     </section>
+    -->
 
     <section class="section" aria-labelledby="quickModesHeading"><div class="section-title" id="quickModesHeading">Quick modes</div><div id="presetGrid" class="preset-grid" aria-label="Built-in audio presets"></div></section>
 
@@ -102,7 +104,7 @@
     <section class="section" aria-labelledby="customPresetHeading"><div class="section-title" id="customPresetHeading">Custom presets</div><div class="preset-library-row"><select id="customPresetSelect" aria-label="Saved custom presets"><option value="">No saved presets</option></select><button id="applyCustomPreset" class="small-button" type="button" disabled>Apply</button><button id="deleteCustomPreset" class="small-button danger" type="button" disabled>Delete</button></div><div class="save-preset-row"><input id="customPresetName" type="text" maxlength="40" placeholder="Preset name" aria-label="Preset name" /><button id="saveCustomPreset" class="small-button" type="button">Save current</button></div></section>
 
     <details id="advancedPanel" class="advanced">
-      <summary>Advanced / Power user <span>Analyzer · 10-band EQ · AI diagnostics</span></summary>
+      <summary>Advanced / Power user <span>Analyzer · 10-band EQ</span></summary>
       <div class="spectrum-panel" aria-label="Live input spectrum">
         <div class="spectrum-heading"><strong>Live spectrum</strong><span id="spectrumStatus">Idle</span></div>
         <div id="spectrumBars" class="spectrum-bars"></div>
@@ -110,14 +112,14 @@
       </div>
       <div id="eqGrid" class="eq-grid" aria-label="10-band equalizer"></div>
       <div class="advanced-footer"><div class="control-group compact"><div class="control-heading"><label for="preampSlider">Preamp</label><output id="preampValue" for="preampSlider">0 dB</output></div><input id="preampSlider" type="range" min="-12" max="6" step="0.5" value="0" /></div><label class="toggle-row" for="autoHeadroom"><span><strong>Auto headroom</strong><small id="headroomValue">0 dB compensation</small></span><input id="autoHeadroom" type="checkbox" checked /></label></div>
-      <a class="ai-lab-link diagnostics-link" href="ai-lab.html" target="_blank" rel="noopener">Open AI diagnostics / local file separator</a>
+      <!-- <a class="ai-lab-link diagnostics-link" href="ai-lab.html" target="_blank" rel="noopener">Open AI diagnostics / local file separator</a> -->
     </details>
 
     <div class="actions"><button id="bypassButton" class="secondary" type="button" aria-pressed="false">Bypass</button><button id="resetButton" class="secondary" type="button">Reset</button></div>
-    <p id="message" class="message" role="status" aria-live="polite"></p><p class="privacy">Audio and AI processing stay on this device.</p>
+    <p id="message" class="message" role="status" aria-live="polite"></p><p class="privacy">Audio processing stays on this device.</p>
   </main>
   <script type="module" src="popup.js"></script>
   <script type="module" src="source-overview.js"></script>
-  <script type="module" src="v3-live.js"></script>
+  <!-- <script type="module" src="v3-live.js"></script> -->
 </body>
 </html>
